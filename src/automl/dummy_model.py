@@ -16,7 +16,7 @@ def freeze_layers(model,num_layers_to_freeze:int):
     return model  # ✅ return model in all cases
 
 
-def get_resnet50(num_classes, num_layers_to_freeze: int = 10, grayscale=True):
+def get_resnet50(num_classes, num_layers_to_freeze, grayscale=True):
     """Returns a ResNet50 model, adapted for grayscale input and number of classes."""
     model = models.resnet50(pretrained=True)
 

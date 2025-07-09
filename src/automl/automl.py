@@ -31,7 +31,7 @@ class AutoML:
     def __init__(
         self,
         seed: int,
-        num_layers_to_freeze: int = 10,
+        num_layers_to_freeze: int = 5,
         lr: float = 0.003
     ) -> None:
         self.seed = seed
@@ -92,6 +92,7 @@ class AutoML:
                 optimizer.step()
                 loss_per_batch.append(loss.item())
             logger.info(f"Epoch {epoch + 1}, Loss: {np.mean(loss_per_batch)}")
+            print(f"Epoch {epoch + 1}, Loss: {np.mean(loss_per_batch)}")
         self._model = model.eval()
         self.device = device
         return self
