@@ -39,6 +39,7 @@ def main(
             raise ValueError(f"Invalid dataset: {args.dataset}")
 
     logger.info("Fitting AutoML")
+    print("Fitting AutoML")
 
     # You do not need to follow this setup or API it's merely here to provide
     # an example of how your automl system could be used.
@@ -60,6 +61,7 @@ def main(
     # This will be used by github classrooms to get a performance
     # on the test set.
     logger.info("Writing predictions to disk")
+    print("Writing predictions to disk")
     with output_path.open("wb") as f:
         np.save(f, test_preds)
 
@@ -69,9 +71,11 @@ def main(
     if not np.isnan(test_labels).any():
         acc = accuracy_score(test_labels, test_preds)
         logger.info(f"Accuracy on test set: {acc}")
+        print(f"Accuracy on test set: {acc}")
     else:
         # This is the setting for the exam dataset, you will not have access to the labels
         logger.info(f"No test split for dataset '{dataset}'")
+        print(f"No test split for dataset '{dataset}'")
 
 
 
@@ -136,6 +140,8 @@ if __name__ == "__main__":
         f"Running dataset {args.dataset}"
         f"\n{args}"
     )
+    print(f"Running dataset {args.dataset}\n{args}")
+
 
     main(
         dataset=args.dataset,
