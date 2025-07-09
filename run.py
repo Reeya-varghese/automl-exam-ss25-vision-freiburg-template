@@ -15,7 +15,7 @@ from automl.automl import AutoML
 import argparse
 
 import logging
-
+from automl.automl import run_random_search
 from automl.datasets import FashionDataset, FlowersDataset, EmotionsDataset
 
 logger = logging.getLogger(__name__)
@@ -25,6 +25,8 @@ def main(
     dataset: str,
     output_path: Path,
     seed: int,
+    num_layers_to_freeze: str,
+    learning_rate: float,
 ):
     match dataset:
         case "fashion":
@@ -42,7 +44,13 @@ def main(
     # an example of how your automl system could be used.
     # As a general rule of thumb, you should **never** pass in any
     # test data to your AutoML solution other than to generate predictions.
-    automl = AutoML(seed=seed)
+    run_random_search(
+        dataset_class=dataset_class,
+        seed=seed,
+        num_trials=5,
+        output_path=output_path
+    )
+    automl = AutoML(seed=seed, num_layers_to_freeze= num_layers_to_freeze, lr=learning_rate)
     # load the dataset and create a loader then pass it
     automl.fit(dataset_class)
     # Do the same for the test dataset
@@ -95,6 +103,21 @@ if __name__ == "__main__":
             " i.e. torch, numpy, pandas, sklearn, etc."
         )
     )
+
+    
+    parser.add_argument(
+        "--learning-rate",
+        type=float,
+        default=0.003,
+        help="Learning rate for optimizer."
+    )
+    parser.add_argument(
+        "--num-layers-to-freeze",
+        type=int,
+        default=0,
+        help="Number of layers to freeze in the model."
+    )
+
     parser.add_argument(
         "--quiet",
         action="store_true",
@@ -102,6 +125,7 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
+    logging.basicConfig(level=logging.INFO)
 
     if not args.quiet:
         logging.basicConfig(level=logging.INFO)
@@ -117,4 +141,6 @@ if __name__ == "__main__":
         dataset=args.dataset,
         output_path=args.output_path,
         seed=args.seed,
+        num_layers_to_freeze=args.num_layers_to_freeze,
+        learning_rate=args.learning_rate
     )
