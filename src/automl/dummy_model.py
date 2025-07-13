@@ -2,6 +2,7 @@
 
 import torch.nn as nn
 from torchvision import models
+from autogluon.vision import ImagePredictor
 
 def freeze_layers(model,num_layers_to_freeze:int):
    
@@ -52,3 +53,16 @@ def get_resnet50(num_classes, num_layers_to_freeze=0, grayscale=True):
     model[0] = freeze_layers(model[0], num_layers_to_freeze)
 
     return model
+
+
+def get_autogluon_predictor(train_data, time_limit=3600, save_path="autogluon_predictor"):
+    """
+    Trains and returns an AutoGluon ImagePredictor.
+    train_data: pandas DataFrame with 'image' and 'label' columns.
+    time_limit: seconds to search/train.
+    save_path: directory to save the predictor.
+    """
+    
+    predictor = ImagePredictor(path=save_path)
+    predictor.fit(train_data, time_limit=time_limit)
+    return predictor

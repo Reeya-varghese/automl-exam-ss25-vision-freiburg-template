@@ -16,7 +16,7 @@ import argparse
 
 import logging
 from automl.automl import run_random_search
-from automl.datasets import FashionDataset, FlowersDataset, EmotionsDataset
+from automl.vision_datasets import FashionDataset, FlowersDataset, EmotionsDataset
 
 logger = logging.getLogger(__name__)
 
