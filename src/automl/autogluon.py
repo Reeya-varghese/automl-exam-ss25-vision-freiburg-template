@@ -1,9 +1,20 @@
 import pandas as pd
 from autogluon.multimodal import MultiModalPredictor
+from vision_datasets import FlowersDataset, FashionDataset, EmotionsDataset
 
 from pathlib import Path
 import argparse
 
+def download(dataset_name):
+    if dataset_name == 'flowers':
+        FlowersDataset(download=True)
+    elif dataset_name == 'fashion':
+        FashionDataset(download=True)
+    elif dataset_name == 'emotions':
+        EmotionsDataset(download=True)
+    else:
+        raise ValueError(f"Unknown dataset: {dataset_name}") 
+    
 def main(
     dataset_name: str,
     output_path: str,
@@ -11,6 +22,9 @@ def main(
     time_limit: int = 3600,
     results_dir: str = "autogluon_results"
 ):
+    download(dataset_name)
+
+
     # Set paths for images and CSVs
     data_root = Path("./data") / dataset_name
     train_csv = data_root / "train.csv"
