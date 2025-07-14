@@ -11,7 +11,9 @@ import torch
 import random
 import numpy as np
 import logging
-
+import optuna
+from optuna.samplers import TPESampler
+from optuna.pruners import SuccessiveHalvingPruner
 from torch import nn, optim
 from torch.utils.data import DataLoader
 from torchvision import transforms
@@ -19,7 +21,7 @@ import random
 from sklearn.metrics import accuracy_score
 
 
-from automl.dummy_model import get_resnet50
+from automl.dummy_model import get_resnet_model
 from automl.utils import calculate_mean_std
 
 
@@ -32,11 +34,19 @@ class AutoML:
         self,
         seed: int,
         num_layers_to_freeze: int = 5,
-        lr: float = 0.003
+        lr: float = 0.001,
+        use_augmentation: bool = True,
+         backbone: str = "resnet50",
+         batch_size: int = 64,
+         epochs: int = 10, 
     ) -> None:
         self.seed = seed
         self.num_layers_to_freeze = num_layers_to_freeze
         self.lr = lr
+        self.backbone = backbone   
+        self.epochs = epochs  
+        self.batch_size = batch_size
+        self.use_augmentation = use_augmentation   
         self._model: nn.Module | None = None
 
     def fit(
@@ -55,13 +65,21 @@ class AutoML:
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(f"Using device: {device}")
 
-        self._transform = transforms.Compose(
-            [   transforms.Resize((224, 224)),
-                transforms.ToTensor(),
-                transforms.Normalize(*calculate_mean_std(dataset_class)),
-            ]
-        )
+        # Transforms
+        mean, std = calculate_mean_std(dataset_class)
+        tfs = [
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean, std),
+        ]
+        if self.use_augmentation:
+            tfs.insert(1, transforms.RandomHorizontalFlip())
+            tfs.insert(1, transforms.RandomRotation(15))
+        self._transform = transforms.Compose(tfs)
+
+        
         dataset = dataset_class(
             root="./data",
             split='train',
@@ -70,18 +88,20 @@ class AutoML:
         )
         train_loader = DataLoader(dataset, batch_size=64, shuffle=True)
 
-        input_size = dataset_class.width * dataset_class.height * dataset_class.channels
+        
 
-        model = get_resnet50(
+        model = get_resnet_model(
+            self.backbone,  # <-- Fix: always pass backbone_name as first argument
             num_classes=dataset_class.num_classes,
             num_layers_to_freeze=self.num_layers_to_freeze,
             grayscale=(dataset_class.channels == 1)
         ).to(device)
+
         criterion = nn.CrossEntropyLoss()
         optimizer = optim.Adam(model.parameters(), lr=self.lr)
 
         model.train()
-        for epoch in range(5):
+        for epoch in range(10):
             loss_per_batch = []
             for _, (data, target) in enumerate(train_loader):
                 data, target = data.to(device), target.to(device)
@@ -174,3 +194,24 @@ def run_random_search(
         np.save(f, best_preds)
 
 
+def optuna_objective(trial, dataset_class, seed=42, epochs=10, batch_size=64):
+    lr = trial.suggest_loguniform('lr', 1e-4, 1e-2)
+    num_layers_to_freeze = trial.suggest_categorical('num_layers_to_freeze', [0, 5, 10, 20])
+    use_augmentation = trial.suggest_categorical('use_augmentation', [True])  # or [True, False] if you want to search
+    backbone = trial.suggest_categorical('backbone', ['resnet18', 'resnet50'])
+    automl = AutoML(
+        seed=seed,
+        num_layers_to_freeze=num_layers_to_freeze,
+        lr=lr,
+        use_augmentation=use_augmentation,
+        backbone=backbone,
+        batch_size=batch_size,
+        epochs=epochs
+    )
+    automl.fit(dataset_class)
+    preds, labels = automl.predict(dataset_class)
+    acc = accuracy_score(labels, preds) if not np.isnan(labels).any() else 0
+    trial.report(acc, step=0)
+    if trial.should_prune():
+        raise optuna.TrialPruned()
+    return acc

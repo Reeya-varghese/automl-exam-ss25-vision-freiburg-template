@@ -1,34 +1,62 @@
-"""An example run file which trains a dummy AutoML system on the training split of a dataset
-and logs the accuracy score on the test set.
-
-In the example data you are given access to the labels of the test split, however
-in the test dataset we will provide later, you will not have access
-to this and you will need to output your predictions for the images of the test set
-to a file, which we will grade using github classrooms!
-"""
 from __future__ import annotations
 
 from pathlib import Path
 from sklearn.metrics import accuracy_score
 import numpy as np
-from automl.automl import AutoML
+from automl.automl import AutoML, optuna_objective
 import argparse
+import optuna
+from optuna.samplers import TPESampler
+from optuna.pruners import SuccessiveHalvingPruner
 
 import logging
-from automl.automl import run_random_search
 from automl.vision_datasets import FashionDataset, FlowersDataset, EmotionsDataset
 
 logger = logging.getLogger(__name__)
 
-
 def main(
-    dataset: str,
+    dataset_class,
     output_path: Path,
     seed: int,
-    num_layers_to_freeze: str,
+    num_layers_to_freeze: int,
     learning_rate: float,
 ):
-    match dataset:
+    logger.info("Fitting AutoML")
+    print("Fitting AutoML")
+    automl = AutoML(seed=seed, num_layers_to_freeze=num_layers_to_freeze, lr=learning_rate)
+    automl.fit(dataset_class)
+    test_preds, test_labels = automl.predict(dataset_class)
+    logger.info("Writing predictions to disk")
+    print("Writing predictions to disk")
+    with output_path.open("wb") as f:
+        np.save(f, test_preds)
+
+    if not np.isnan(test_labels).any():
+        acc = accuracy_score(test_labels, test_preds)
+        logger.info(f"Accuracy on test set: {acc}")
+        print(f"Accuracy on test set: {acc}")
+    else:
+        logger.info(f"No test split for dataset '{dataset_class.__name__}'")
+        print(f"No test split for dataset '{dataset_class.__name__}'")
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--hpo", action="store_true", help="Run Optuna TPE+SH hyperparameter search instead of single run.")
+    parser.add_argument("--n-trials", type=int, default=10, help="Number of Optuna trials if --hpo is set.")
+    parser.add_argument("--dataset", type=str, required=True, help="The name of the dataset to run on.", choices=["fashion", "flowers", "emotions"])
+    parser.add_argument("--output-path", type=Path, default=Path("predictions.npy"), help="The path to save the predictions to. By default this will just save to './predictions.npy'.")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility.")
+    parser.add_argument("--learning-rate", type=float, default=0.003, help="Learning rate for optimizer.")
+    parser.add_argument("--num-layers-to-freeze", type=int, default=0, help="Number of layers to freeze in the model.")
+    parser.add_argument("--quiet", action="store_true", help="Whether to log only warnings and errors.")
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO if not args.quiet else logging.WARNING)
+    logger.info(f"Running dataset {args.dataset}\n{args}")
+    print(f"Running dataset {args.dataset}\n{args}")
+
+    # 1. Select dataset class ONCE at top level
+    match args.dataset:
         case "fashion":
             dataset_class = FashionDataset
         case "flowers":
@@ -38,115 +66,47 @@ def main(
         case _:
             raise ValueError(f"Invalid dataset: {args.dataset}")
 
-    logger.info("Fitting AutoML")
-    print("Fitting AutoML")
-
-    # You do not need to follow this setup or API it's merely here to provide
-    # an example of how your automl system could be used.
-    # As a general rule of thumb, you should **never** pass in any
-    # test data to your AutoML solution other than to generate predictions.
-    run_random_search(
-        dataset_class=dataset_class,
-        seed=seed,
-        num_trials=5,
-        output_path=output_path
-    )
-    automl = AutoML(seed=seed, num_layers_to_freeze= num_layers_to_freeze, lr=learning_rate)
-    # load the dataset and create a loader then pass it
-    automl.fit(dataset_class)
-    # Do the same for the test dataset
-    test_preds, test_labels = automl.predict(dataset_class)
-
-    # Write the predictions of X_test to disk
-    # This will be used by github classrooms to get a performance
-    # on the test set.
-    logger.info("Writing predictions to disk")
-    print("Writing predictions to disk")
-    with output_path.open("wb") as f:
-        np.save(f, test_preds)
-
-    # check if test_labels has missing data
-
-
-    if not np.isnan(test_labels).any():
-        acc = accuracy_score(test_labels, test_preds)
-        logger.info(f"Accuracy on test set: {acc}")
-        print(f"Accuracy on test set: {acc}")
-    else:
-        # This is the setting for the exam dataset, you will not have access to the labels
-        logger.info(f"No test split for dataset '{dataset}'")
-        print(f"No test split for dataset '{dataset}'")
-
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument(
-        "--dataset",
-        type=str,
-        required=True,
-        help="The name of the dataset to run on.",
-        choices=["fashion", "flowers", "emotions"]
-    )
-    parser.add_argument(
-        "--output-path",
-        type=Path,
-        default=Path("predictions.npy"),
-        help=(
-            "The path to save the predictions to."
-            " By default this will just save to './predictions.npy'."
+    if args.hpo:
+        study = optuna.create_study(
+            direction="maximize",
+            sampler=TPESampler(),
+            pruner=SuccessiveHalvingPruner(min_resource=1, reduction_factor=2)
         )
-    )
-    parser.add_argument(
-        "--seed",
-        type=int,
-        default=42,
-        help=(
-            "Random seed for reproducibility if you are using and randomness,"
-            " i.e. torch, numpy, pandas, sklearn, etc."
+        study.optimize(lambda trial: optuna_objective(
+            trial,
+            dataset_class=dataset_class,
+            seed=args.seed,
+            epochs=10,
+            batch_size=64
+        ), n_trials=args.n_trials)
+        print("✅ Best trial:", study.best_trial.value)
+        print("🏆 Best hyperparameters:", study.best_trial.params)
+
+        # OPTIONAL: Retrain on best config and save predictions
+        best_params = study.best_trial.params
+        automl = AutoML(
+            seed=args.seed,
+            num_layers_to_freeze=best_params.get("num_layers_to_freeze", 0),
+            lr=best_params.get("lr", 0.001),
+            use_augmentation=best_params.get("use_augmentation", True),
+            backbone=best_params.get("backbone", "resnet18"),
+            batch_size=64,
+            epochs=10
         )
-    )
+        automl.fit(dataset_class)
+        test_preds, test_labels = automl.predict(dataset_class)
+        with args.output_path.open("wb") as f:
+            np.save(f, test_preds)
+        print(f"Predictions for best config saved to {args.output_path}")
+        if not np.isnan(test_labels).any():
+            acc = accuracy_score(test_labels, test_preds)
+            print(f"Accuracy of best config on test set: {acc}")
 
-    
-    parser.add_argument(
-        "--learning-rate",
-        type=float,
-        default=0.003,
-        help="Learning rate for optimizer."
-    )
-    parser.add_argument(
-        "--num-layers-to-freeze",
-        type=int,
-        default=0,
-        help="Number of layers to freeze in the model."
-    )
-
-    parser.add_argument(
-        "--quiet",
-        action="store_true",
-        help="Whether to log only warnings and errors."
-    )
-
-    args = parser.parse_args()
-    logging.basicConfig(level=logging.INFO)
-
-    if not args.quiet:
-        logging.basicConfig(level=logging.INFO)
     else:
-        logging.basicConfig(level=logging.WARNING)
-
-    logger.info(
-        f"Running dataset {args.dataset}"
-        f"\n{args}"
-    )
-    print(f"Running dataset {args.dataset}\n{args}")
-
-
-    main(
-        dataset=args.dataset,
-        output_path=args.output_path,
-        seed=args.seed,
-        num_layers_to_freeze=args.num_layers_to_freeze,
-        learning_rate=args.learning_rate
-    )
+        main(
+            dataset_class=dataset_class,
+            output_path=args.output_path,
+            seed=args.seed,
+            num_layers_to_freeze=args.num_layers_to_freeze,
+            learning_rate=args.learning_rate
+        )

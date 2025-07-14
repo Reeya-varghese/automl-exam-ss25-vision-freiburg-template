@@ -1,36 +1,39 @@
-# src/automl/model.py
-
+import torch
 import torch.nn as nn
-from torchvision import models
-from autogluon.vision import ImagePredictor
-
-def freeze_layers(model,num_layers_to_freeze:int):
-   
-    layer_count = 0
-    for child in model.children():
-        for param in child.parameters():
-            if layer_count < num_layers_to_freeze:
-                param.requires_grad = False
-                layer_count += 1
-            else:
-                return model  # ✅ safe exit once limit reached
-    return model  # ✅ return model in all cases
+from torchvision import models, transforms
+#from autogluon.multimodal
+import optuna
+from optuna.samplers import TPESampler
+from optuna.pruners import SuccessiveHalvingPruner
 
 
-def get_resnet50(num_classes, num_layers_to_freeze=0, grayscale=True):
-    """Mimics the Keras ResNet50 + Dense head architecture."""
+# --- Utility for device selection ---
+def get_device():
+    return 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    # Load pretrained resnet50 without the top FC layer
-    base_model = models.resnet50(pretrained=True)
+# --- Augmentation and Normalization pipeline ---
+def get_train_transforms(mean, std):
+    return transforms.Compose([
+        transforms.RandomRotation(degrees=15),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=mean, std=std),
+    ])
 
+def get_val_transforms(mean, std):
+    return transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize(mean=mean, std=std),
+    ])
+
+# --- Flexible ResNet Backbone ---
+def get_resnet_model(backbone_name, num_classes, grayscale=False, num_layers_to_freeze=0):
+    assert backbone_name in ["resnet18", "resnet50"], "Only resnet18 or resnet50 supported"
+    base_model = getattr(models, backbone_name)(pretrained=True)
     if grayscale:
         base_model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
-
-    # Remove the top layer (fc) and use the output of avgpool (2048 features)
     features_dim = base_model.fc.in_features
-    base_model.fc = nn.Identity()  # remove FC layer
-
-    # Build a classifier head similar to your Keras setup
+    base_model.fc = nn.Identity()
     classifier = nn.Sequential(
         nn.Flatten(),
         nn.BatchNorm1d(features_dim),
@@ -42,27 +45,43 @@ def get_resnet50(num_classes, num_layers_to_freeze=0, grayscale=True):
         nn.BatchNorm1d(1024),
         nn.Linear(1024, num_classes)
     )
-
-    # Final model: ResNet50 backbone + custom classifier
-    model = nn.Sequential(
-        base_model,
-        classifier
-    )
-
-    # Optionally freeze layers in base model
+    model = nn.Sequential(base_model, classifier)
+    # Optionally freeze layers
     model[0] = freeze_layers(model[0], num_layers_to_freeze)
-
     return model
 
+# --- Freezing layers helper ---
+def freeze_layers(model, num_layers_to_freeze: int):
+    layer_count = 0
+    for child in model.children():
+        for param in child.parameters():
+            if layer_count < num_layers_to_freeze:
+                param.requires_grad = False
+                layer_count += 1
+            else:
+                return model
+    return model
 
-def get_autogluon_predictor(train_data, time_limit=3600, save_path="autogluon_predictor"):
+# --- AutoGluon Training Wrapper ---
+def get_autogluon_predictor(train_data, time_limit=3600, save_path="autogluon_predictor", 
+                            batch_size=None, learning_rate=None, optimizer=None, 
+                            epochs=None, backbone='resnet18'):
     """
     Trains and returns an AutoGluon ImagePredictor.
     train_data: pandas DataFrame with 'image' and 'label' columns.
-    time_limit: seconds to search/train.
-    save_path: directory to save the predictor.
     """
-    
-    predictor = ImagePredictor(path=save_path)
-    predictor.fit(train_data, time_limit=time_limit)
+    hyperparameters = {
+        "model": backbone,
+        "batch_size": batch_size if batch_size else 32,
+        "lr": learning_rate if learning_rate else 1e-3,
+        "optimizer": optimizer if optimizer else "adam",
+        "epochs": epochs if epochs else 10
+    }
+    predictor = MultiModalPredictor(path=save_path)
+    predictor.fit(
+        train_data=train_data,
+        hyperparameters=hyperparameters,
+        time_limit=time_limit,
+        num_gpus=1 if torch.cuda.is_available() else 0
+    )
     return predictor
