@@ -70,7 +70,7 @@ if __name__ == "__main__":
         study = optuna.create_study(
             direction="maximize",
             sampler=TPESampler(),
-            pruner=SuccessiveHalvingPruner(min_resource=1, reduction_factor=2)
+            pruner=SuccessiveHalvingPruner()
         )
         study.optimize(lambda trial: optuna_objective(
             trial,

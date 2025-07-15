@@ -205,10 +205,10 @@ if __name__ == "__main__":
     pareto_trials = study.best_trials
     print(f"\n✅Pareto-optimal solutions ({len(pareto_trials)}):")
     for t in pareto_trials:
-        print(f"✅Accuracy: {-t.values[0]:.4f}, F1: {-t.values[1]:.4f}, Time: {t.values[2]:.2f}s | Params: {t.params}")
+        print(f"✅Accuracy: {t.values[0]:.4f}, F1: {t.values[1]:.4f}, Time: {t.values[2]:.2f}s | Params: {t.params}")
 
     # Retrain AutoML with best config and save predictions
-    best_acc_trial = min(pareto_trials, key=lambda t: t.values[0])  # Minimize -acc = maximize acc
+    best_acc_trial = max(pareto_trials, key=lambda t: t.values[0])  
     best_params = best_acc_trial.params
     automl = AutoML(
         seed=args.seed,
@@ -246,7 +246,7 @@ try:
     print("✅ Pareto front plot saved as pareto_front.html")
 
     # Hyperparameter importance (accuracy)
-    fig = optuna.visualization.plot_param_importances(study, target=lambda t: -t.values[0], target_name="Accuracy")
+    fig = optuna.visualization.plot_param_importances(study, target=lambda t: t.values[0], target_name="Accuracy")
     fig.write_html("param_importance.html")
     print("✅ Parameter importance plot saved as param_importance.html")
 
@@ -259,7 +259,7 @@ try:
     print("✅ Parallel coordinate plot saved as parallel_coords.html")
 
     # Accuracy histogram
-    all_accs = [-t.values[0] for t in study.trials if t.values is not None]
+    all_accs = [t.values[0] for t in study.trials if t.values is not None]
     plt.figure()
     plt.hist(all_accs, bins=20, color='skyblue')
     plt.xlabel('Accuracy')
