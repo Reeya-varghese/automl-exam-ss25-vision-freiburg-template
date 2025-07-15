@@ -99,11 +99,20 @@ class AutoML:
         return self
 
     def predict(self, dataset_class) -> Tuple[np.ndarray, np.ndarray]:
+        
+        mean, std = calculate_mean_std(dataset_class)
+        
+        test_transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean, std)
+        ])
+
         dataset = dataset_class(
-            root="./data",
-            split='test',
-            download=True,
-            transform=self._transform
+        root="./data",
+        split='test',
+        download=True,
+        transform=test_transform
         )
         data_loader = DataLoader(dataset, batch_size=100, shuffle=False)
         predictions = []
