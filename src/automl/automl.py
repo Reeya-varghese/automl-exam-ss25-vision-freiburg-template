@@ -112,7 +112,7 @@ class AutoML:
         self.device = device
         return self
 
-    def predict(self, dataset_class) -> Tuple[np.ndarray, np.ndarray]:
+    def predict(self, dataset_class) -> tuple[np.ndarray, np.ndarray]:
         mean, std = calculate_mean_std(dataset_class)
         test_transform = transforms.Compose([
             transforms.Resize((224, 224)),

@@ -295,7 +295,7 @@ try:
     fig = optuna.visualization.plot_optimization_history(
         study,
         target=lambda t: t.values[0],   # 0 = accuracy
-        arget_name="Accuracy"
+        target_name="Accuracy"
     )
     fig.write_html("optuna_optimization_history.html")
     print("✅ Optuna optimization history plot saved as optuna_optimization_history.html")
