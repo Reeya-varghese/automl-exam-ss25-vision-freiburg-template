@@ -19,13 +19,20 @@ class AutoML:
         seed: int,
         lr: float = 0.001,
         batch_size: int = 32,
+        use_augmentation: bool = True,
+        backbone: str = "resnet18",
         epochs: int = 8,
+        num_layers_to_freeze: int = 0,
         optimizer_name: str = "adam",
     ) -> None:
         self.seed = seed
         self.lr = lr
+        self.backbone = backbone
+        self.num_layers_to_freeze = num_layers_to_freeze
+        self.use_augmentation = use_augmentation
         self.batch_size = batch_size
         self.epochs = epochs
+
         self.optimizer_name = optimizer_name
         self._model: nn.Module | None = None
 
@@ -62,9 +69,9 @@ class AutoML:
         val_loader = DataLoader(val_set, batch_size=self.batch_size, shuffle=False)
 
         model = get_resnet_model(
-            "resnet18",  # fixed backbone
+            self.backbone,  # fixed backbone
             num_classes=dataset_class.num_classes,
-            num_layers_to_freeze=0,   # fully fine-tuned
+            num_layers_to_freeze=self.num_layers_to_freeze,   # fully fine-tuned
             grayscale=(dataset_class.channels == 1)
         ).to(device)
 
@@ -140,13 +147,19 @@ class AutoML:
 def optuna_objective(trial, dataset_class, seed=42):
     lr = trial.suggest_float('lr', 1e-4, 1e-2, log=True)
     batch_size = trial.suggest_categorical('batch_size', [32, 64])
-    optimizer_name = trial.suggest_categorical('optimizer', ['adam', 'sgd'])
+    optimizer = trial.suggest_categorical('optimizer', ['adam', 'sgd'])
+    backbone = "resnet18"  
+    use_augmentation = True
+    epochs = 8  
     automl = AutoML(
-        seed=seed,
+         seed=seed,
+        num_layers_to_freeze=0,
         lr=lr,
+        use_augmentation=use_augmentation,
+        backbone=backbone,
         batch_size=batch_size,
-        epochs=8,  # always 8 per trial during HPO
-        optimizer_name=optimizer_name
+        epochs=epochs,
+        optimizer=optimizer
     )
     automl.fit(dataset_class, subsample=2000)  # Use a fixed subsample for all trials
     preds, labels = automl.predict(dataset_class)

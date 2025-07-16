@@ -89,13 +89,13 @@ if __name__ == "__main__":
         final_epochs = 10 if args.dataset == "flowers" else 8
         automl = AutoML(
             seed=args.seed,
-            # Always fully fine-tuned for screenshot config
+            num_layers_to_freeze=0,
             lr=best_params.get("lr", 0.001),
             use_augmentation=True,
             backbone="resnet18",
             batch_size=best_params.get("batch_size", 32),
             epochs=final_epochs,
-            optimizer_name=best_params.get("optimizer", "adam"),  # If you tune optimizer
+            optimizer=best_params.get("optimizer", "adam"),
         )
         automl.fit(dataset_class)
         test_preds, test_labels = automl.predict(dataset_class)
