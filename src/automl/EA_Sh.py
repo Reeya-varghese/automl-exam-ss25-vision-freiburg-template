@@ -292,6 +292,14 @@ try:
     import optuna.visualization
     import matplotlib.pyplot as plt
 
+    fig = optuna.visualization.plot_optimization_history(
+        study,
+        target=lambda t: t.values[0],   # 0 = accuracy
+        arget_name="Accuracy"
+    )
+    fig.write_html("optuna_optimization_history.html")
+    print("✅ Optuna optimization history plot saved as optuna_optimization_history.html")
+
     # Pareto front
     fig = optuna.visualization.plot_pareto_front(
         study,
@@ -307,7 +315,11 @@ try:
     print("✅ Parameter importance plot saved as param_importance.html")
 
     # Parallel coordinate plot
-    fig = optuna.visualization.plot_parallel_coordinate(study)
+    fig = optuna.visualization.plot_parallel_coordinate(
+        study,
+        target=lambda t: t.values[0],
+        target_name="Accuracy"
+    )
     fig.write_html("parallel_coords.html")
     print("✅ Parallel coordinate plot saved as parallel_coords.html")
 
