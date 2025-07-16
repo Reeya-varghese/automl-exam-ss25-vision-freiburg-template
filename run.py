@@ -6,6 +6,9 @@ import numpy as np
 from automl.automl import AutoML, optuna_objective
 import argparse
 import optuna
+import matplotlib.pyplot as plt
+import optuna.visualization
+
 from optuna.samplers import TPESampler
 from optuna.pruners import SuccessiveHalvingPruner
 
@@ -76,22 +79,24 @@ if __name__ == "__main__":
             trial,
             dataset_class=dataset_class,
             seed=args.seed,
-            epochs=10,
-            batch_size=64
+        
         ), n_trials=args.n_trials)
         print("✅ Best trial:", study.best_trial.value)
         print("🏆 Best hyperparameters:", study.best_trial.params)
 
         # OPTIONAL: Retrain on best config and save predictions
         best_params = study.best_trial.params
+
+        final_epochs = 10 if args.dataset == "flowers" else 8
         automl = AutoML(
             seed=args.seed,
-            num_layers_to_freeze=best_params.get("num_layers_to_freeze", 0),
+            num_layers_to_freeze=0,  # Always fully fine-tuned for screenshot config
             lr=best_params.get("lr", 0.001),
-            use_augmentation=best_params.get("use_augmentation", True),
-            backbone=best_params.get("backbone", "resnet18"),
-            batch_size=64,
-            epochs=10
+            use_augmentation=True,
+            backbone="resnet18",
+            batch_size=best_params.get("batch_size", 32),
+            epochs=final_epochs,
+            optimizer_name=best_params.get("optimizer", "adam"),  # If you tune optimizer
         )
         automl.fit(dataset_class)
         test_preds, test_labels = automl.predict(dataset_class)
@@ -102,6 +107,35 @@ if __name__ == "__main__":
             acc = accuracy_score(test_labels, test_preds)
             print(f"Accuracy of best config on test set: {acc}")
 
+    
+
+        fig = optuna.visualization.plot_optimization_history(study)
+        fig.write_html("optuna_optimization_history_TPE.html")
+        print("✅ Optuna optimization history plot saved as optuna_optimization_history.html")
+
+        # Plot per-epoch accuracy/loss for all trials
+        plt.figure(figsize=(10, 5))
+        for i, t in enumerate(study.trials):
+            if "history" in t.user_attrs:
+                plt.plot(t.user_attrs["history"]["acc"], alpha=0.3)
+        plt.title("Accuracy per Epoch (all trials)")
+        plt.xlabel("Epoch")
+        plt.ylabel("Accuracy")
+        plt.savefig("trials_accuracy_TPE.png")
+        plt.close()
+
+        plt.figure(figsize=(10, 5))
+        for i, t in enumerate(study.trials):
+            if "history" in t.user_attrs:
+                plt.plot(t.user_attrs["history"]["loss"], alpha=0.3)
+        plt.title("Loss per Epoch (all trials)")
+        plt.xlabel("Epoch")
+        plt.ylabel("Loss")
+        plt.savefig("trials_loss_TPE.png")
+        plt.close()
+        print("✅ Per-epoch accuracy/loss curves saved as trials_accuracy.png and trials_loss.png")
+
+
     else:
         main(
             dataset_class=dataset_class,
@@ -110,3 +144,5 @@ if __name__ == "__main__":
             num_layers_to_freeze=args.num_layers_to_freeze,
             learning_rate=args.learning_rate
         )
+
+

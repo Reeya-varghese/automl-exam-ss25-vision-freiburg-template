@@ -19,6 +19,7 @@ from optuna.pruners import SuccessiveHalvingPruner
 from dummy_model import get_resnet_model
 from utils import calculate_mean_std
 from vision_datasets import FashionDataset, FlowersDataset, EmotionsDataset
+from torch.utils.data import Subset, random_split
 # ---------------------------------------------
 
 logger = logging.getLogger(__name__)
@@ -27,15 +28,17 @@ class AutoML:
     def __init__(
         self,
         seed: int,
-        num_layers_to_freeze: int = 5,
+        num_layers_to_freeze: int = 0,
         lr: float = 0.001,
         use_augmentation: bool = True,
-        backbone: str = "resnet50",
+        backbone: str = "resnet18",
         batch_size: int = 64,
         epochs: int = 10,
+        optimizer = 'adam',
     ) -> None:
         self.seed = seed
         self.num_layers_to_freeze = num_layers_to_freeze
+        self.optimizer = optimizer
         self.lr = lr
         self.backbone = backbone
         self.epochs = epochs
@@ -57,34 +60,49 @@ class AutoML:
         mean, std = calculate_mean_std(dataset_class)
         tfs = [
             transforms.Resize((224, 224)),
+            transforms.RandomRotation(15),
+            transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             transforms.Normalize(mean, std),
         ]
-        if self.use_augmentation:
-            tfs.insert(1, transforms.RandomHorizontalFlip())
-            tfs.insert(1, transforms.RandomRotation(15))
         self._transform = transforms.Compose(tfs)
 
+       
         dataset = dataset_class(
             root="./data",
             split='train',
             download=True,
             transform=self._transform
         )
-        train_loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
+        indices = np.random.choice(len(dataset), 2000, replace=False)
+        subset = Subset(dataset, indices)
+        train_len = int(0.8 * 2000)
+        val_len = 2000 - train_len
+        train_set, val_set = random_split(subset, [train_len, val_len], generator=torch.Generator().manual_seed(self.seed))
+        train_loader = DataLoader(train_set, batch_size=self.batch_size, shuffle=True)
+        val_loader = DataLoader(val_set, batch_size=self.batch_size, shuffle=False)
+
         model = get_resnet_model(
             self.backbone,
             num_classes=dataset_class.num_classes,
             num_layers_to_freeze=self.num_layers_to_freeze,
             grayscale=(dataset_class.channels == 1)
         ).to(device)
+        if self.optimizer == 'adam':
+            optimizer = optim.Adam(model.parameters(), lr=self.lr)
+        elif self.optimizer:
+            optimizer = optim.SGD(model.parameters(), lr=self.lr, momentum=0.9)
 
         criterion = nn.CrossEntropyLoss()
-        optimizer = optim.Adam(model.parameters(), lr=self.lr)
+
+        self._history = {"loss": [], "acc": [], "val_loss": [], "val_acc": []}
+      
         model.train()
         for epoch in range(self.epochs):
             loss_per_batch = []
-            for _, (data, target) in enumerate(train_loader):
+            all_preds = []
+            all_targets = []
+            for data, target in train_loader:
                 data, target = data.to(device), target.to(device)
                 optimizer.zero_grad()
                 output = model(data)
@@ -92,11 +110,37 @@ class AutoML:
                 loss.backward()
                 optimizer.step()
                 loss_per_batch.append(loss.item())
-            logger.info(f"Epoch {epoch + 1}, Loss: {np.mean(loss_per_batch):.4f}")
-            print(f"Epoch {epoch + 1}, Loss: {np.mean(loss_per_batch):.4f}")
-        self._model = model.eval()
+                all_preds.extend(torch.argmax(output, 1).cpu().numpy())
+                all_targets.extend(target.cpu().numpy())
+            epoch_loss = np.mean(loss_per_batch)
+            epoch_acc = accuracy_score(all_targets, all_preds)
+            self._history["loss"].append(epoch_loss)
+            self._history["acc"].append(epoch_acc)
+
+            val_loss_per_batch = []
+            val_preds = []
+            val_targets = []
+            model.eval()
+            with torch.no_grad():
+                for data, target in val_loader:
+                    data, target = data.to(device), target.to(device)
+                    output = model(data)
+                    loss = criterion(output, target)
+                    pred = torch.argmax(output, 1).cpu().numpy()
+                    val_loss_per_batch.append(loss.item())
+                    val_preds.extend(pred)
+                    val_targets.extend(target.cpu().numpy())
+            val_loss = np.mean(val_loss_per_batch)
+            val_acc = accuracy_score(val_targets, val_preds)
+            self._history["val_loss"].append(val_loss)
+            self._history["val_acc"].append(val_acc)
+            logger.info(f"Epoch {epoch + 1}, Loss: {epoch_loss:.4f}, Acc: {epoch_acc:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}")
+            print(f"Epoch {epoch + 1}, Loss: {epoch_loss:.4f}, Acc: {epoch_acc:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}")
+            model.train()
+        self._model = model.eval()  
         self.device = device
         return self
+
 
     def predict(self, dataset_class) -> Tuple[np.ndarray, np.ndarray]:
         
@@ -129,19 +173,22 @@ class AutoML:
         labels = np.concatenate(labels)
         return predictions, labels
 
-def optuna_objective(trial, dataset_class, seed=42, epochs=10, batch_size=64):
-    lr = trial.suggest_loguniform('lr', 1e-4, 1e-2)
-    num_layers_to_freeze = trial.suggest_categorical('num_layers_to_freeze', [0, 5, 10, 20])
-    use_augmentation = trial.suggest_categorical('use_augmentation', [True])
-    backbone = trial.suggest_categorical('backbone', ['resnet18', 'resnet50'])
+def optuna_objective(trial, dataset_class, seed=42):
+    lr = trial.suggest_float('lr', 1e-4, 1e-2, log=True)
+    batch_size = trial.suggest_categorical('batch_size', [32, 64])
+    optimizer = trial.suggest_categorical('optimizer', ['adam', 'sgd'])
+    backbone = "resnet18"  # Fixed as per screenshot
+    use_augmentation = True
+    epochs = 8  
     automl = AutoML(
         seed=seed,
-        num_layers_to_freeze=num_layers_to_freeze,
+        num_layers_to_freeze=0,
         lr=lr,
         use_augmentation=use_augmentation,
         backbone=backbone,
         batch_size=batch_size,
-        epochs=epochs
+        epochs=epochs,
+        optimizer=optimizer
     )
     start = time.time()
     automl.fit(dataset_class)
@@ -207,8 +254,6 @@ if __name__ == "__main__":
         trial,
         dataset_class=dataset_class,
         seed=args.seed,
-        epochs=10,
-        batch_size=64
     ), n_trials=args.n_trials)
 
     pareto_trials = study.best_trials
@@ -219,14 +264,16 @@ if __name__ == "__main__":
     # Retrain AutoML with best config and save predictions
     best_acc_trial = max(pareto_trials, key=lambda t: t.values[0])  
     best_params = best_acc_trial.params
+    final_epochs = 10 if args.dataset == "flowers" else 8
     automl = AutoML(
         seed=args.seed,
-        num_layers_to_freeze=best_params.get("num_layers_to_freeze", 0),
+        num_layers_to_freeze=0,
         lr=best_params.get("lr", 0.001),
-        use_augmentation=best_params.get("use_augmentation", True),
-        backbone=best_params.get("backbone", "resnet18"),
-        batch_size=64,
-        epochs=10
+        use_augmentation=True,
+        backbone="resnet18",
+        batch_size=best_params.get("batch_size", 32),
+        epochs=final_epochs,
+        optimizer=best_params.get("optimizer", "adam"),
     )
     automl.fit(dataset_class)
     test_preds, test_labels = automl.predict(dataset_class)
@@ -260,10 +307,7 @@ try:
     print("✅ Parameter importance plot saved as param_importance.html")
 
     # Parallel coordinate plot
-    fig = optuna.visualization.plot_parallel_coordinate(
-        study,
-        target_names=["Accuracy", "F1", "Training Time"]
-    )
+    fig = optuna.visualization.plot_parallel_coordinate(study)
     fig.write_html("parallel_coords.html")
     print("✅ Parallel coordinate plot saved as parallel_coords.html")
 
@@ -275,8 +319,34 @@ try:
     plt.ylabel('Count')
     plt.title('Distribution of Accuracy Across Trials')
     plt.tight_layout()
-    plt.savefig("accuracy_hist.png")
+    plt.savefig("accuracy_hist_EA.png")
     plt.close()
     print("✅ Accuracy histogram saved as accuracy_hist.png")
+
+    plt.figure(figsize=(10, 5))
+    for t in study.trials:
+        if "history" in t.user_attrs:
+            plt.plot(t.user_attrs["history"]["acc"], alpha=0.3, label='train_acc' if t == study.trials[0] else "")
+            plt.plot(t.user_attrs["history"]["val_acc"], alpha=0.3, linestyle='--', label='val_acc' if t == study.trials[0] else "")
+    plt.title("Accuracy per Epoch (all trials)")
+    plt.xlabel("Epoch")
+    plt.ylabel("Accuracy")
+    plt.legend()
+    plt.savefig("trials_accuracy_EA_SH.png")
+    plt.close()
+
+    plt.figure(figsize=(10, 5))
+    for t in study.trials:
+        if "history" in t.user_attrs:
+            plt.plot(t.user_attrs["history"]["loss"], alpha=0.3, label='train_loss' if t == study.trials[0] else "")
+            plt.plot(t.user_attrs["history"]["val_loss"], alpha=0.3, linestyle='--', label='val_loss' if t == study.trials[0] else "")
+    plt.title("Loss per Epoch (all trials)")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.legend()
+    plt.savefig("trials_loss_EA_SH.png")
+    plt.close()
+    print("✅ Per-epoch train/val accuracy and loss curves saved as trials_accuracy.png and trials_loss.png")
 except Exception as e:
     print("Could not create one or more plots:", e)
+
