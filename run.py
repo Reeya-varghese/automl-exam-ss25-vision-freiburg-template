@@ -95,7 +95,7 @@ if __name__ == "__main__":
             backbone="resnet18",
             batch_size=best_params.get("batch_size", 32),
             epochs=final_epochs,
-            optimizer=best_params.get("optimizer", "adam"),
+            optimizer_name=best_params.get("optimizer", "adam"),
         )
         automl.fit(dataset_class)
         test_preds, test_labels = automl.predict(dataset_class)

@@ -147,7 +147,7 @@ class AutoML:
 def optuna_objective(trial, dataset_class, seed=42):
     lr = trial.suggest_float('lr', 1e-4, 1e-2, log=True)
     batch_size = trial.suggest_categorical('batch_size', [32, 64])
-    optimizer = trial.suggest_categorical('optimizer', ['adam', 'sgd'])
+    optimizer_name = trial.suggest_categorical('optimizer', ['adam', 'sgd'])
     backbone = "resnet18"  
     use_augmentation = True
     epochs = 8  
@@ -159,7 +159,7 @@ def optuna_objective(trial, dataset_class, seed=42):
         backbone=backbone,
         batch_size=batch_size,
         epochs=epochs,
-        optimizer=optimizer
+        optimizer_name=optimizer_name
     )
     automl.fit(dataset_class, subsample=2000)  # Use a fixed subsample for all trials
     preds, labels = automl.predict(dataset_class)
