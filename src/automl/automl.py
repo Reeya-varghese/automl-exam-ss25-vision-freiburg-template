@@ -29,7 +29,7 @@ class AutoML:
         self.optimizer_name = optimizer_name
         self._model: nn.Module | None = None
 
-    def fit(self, dataset_class: any) -> "AutoML":
+    def fit(self, dataset_class: any, subsample: int = None) -> "AutoML":
         random.seed(self.seed)
         np.random.seed(self.seed)
         torch.manual_seed(self.seed)
@@ -50,7 +50,11 @@ class AutoML:
         self._transform = transforms.Compose(tfs)
 
         # 2000 sample subset, 80/20 split
+        
         dataset = dataset_class(root="./data", split="train", download=True, transform=self._transform)
+        if subsample is not None:
+            indices = np.random.choice(len(dataset), subsample, replace=False)
+            dataset = Subset(dataset, indices)
         train_len = int(0.8 * len(dataset))
         val_len = len(dataset) - train_len
         train_set, val_set = random_split(dataset, [train_len, val_len], generator=torch.Generator().manual_seed(self.seed))
@@ -144,7 +148,7 @@ def optuna_objective(trial, dataset_class, seed=42):
         epochs=8,  # always 8 per trial during HPO
         optimizer_name=optimizer_name
     )
-    automl.fit(dataset_class)
+    automl.fit(dataset_class, subsample=2000)  # Use a fixed subsample for all trials
     preds, labels = automl.predict(dataset_class)
     acc = accuracy_score(labels, preds) if not np.isnan(labels).any() else 0
     trial.set_user_attr("history", automl._history)

@@ -27,7 +27,7 @@ def main(
     logger.info("Fitting AutoML")
     print("Fitting AutoML")
     automl = AutoML(seed=seed, num_layers_to_freeze=num_layers_to_freeze, lr=learning_rate)
-    automl.fit(dataset_class)
+    automl.fit(dataset_class, subsample=None)
     test_preds, test_labels = automl.predict(dataset_class)
     logger.info("Writing predictions to disk")
     print("Writing predictions to disk")

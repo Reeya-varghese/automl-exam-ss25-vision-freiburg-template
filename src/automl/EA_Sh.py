@@ -46,7 +46,7 @@ class AutoML:
         self.use_augmentation = use_augmentation
         self._model: nn.Module | None = None
 
-    def fit(self, dataset_class: Any) -> "AutoML":
+    def fit(self, dataset_class: Any, subsample: int = None) -> "AutoML":
         import random
         random.seed(self.seed)
         np.random.seed(self.seed)
@@ -74,6 +74,9 @@ class AutoML:
             download=True,
             transform=self._transform
         )
+        if subsample is not None:
+            indices = np.random.choice(len(dataset), subsample, replace=False)
+            dataset = Subset(dataset, indices)
         train_len = int(0.8 * len(dataset))
         val_len = len(dataset) - train_len
         train_set, val_set = random_split(dataset, [train_len, val_len], generator=torch.Generator().manual_seed(self.seed))
@@ -189,7 +192,7 @@ def optuna_objective(trial, dataset_class, seed=42):
         optimizer=optimizer
     )
     start = time.time()
-    automl.fit(dataset_class)
+    automl.fit(dataset_class, subsample=2000)
     training_time = time.time() - start
     logger.info(f"Training time: {training_time:.2f} seconds")
 
@@ -273,7 +276,7 @@ if __name__ == "__main__":
         epochs=final_epochs,
         optimizer=best_params.get("optimizer", "adam"),
     )
-    automl.fit(dataset_class)
+    automl.fit(dataset_class, subsample=None)
     test_preds, test_labels = automl.predict(dataset_class)
     with args.output_path.open("wb") as f:
         np.save(f, test_preds)
