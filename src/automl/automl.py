@@ -50,12 +50,10 @@ class AutoML:
         self._transform = transforms.Compose(tfs)
 
         # 2000 sample subset, 80/20 split
-        full_dataset = dataset_class(root="./data", split="train", download=True, transform=self._transform)
-        indices = np.random.choice(len(full_dataset), 2000, replace=False)
-        subset = Subset(full_dataset, indices)
-        train_len = int(0.8 * 2000)
-        val_len = 2000 - train_len
-        train_set, val_set = random_split(subset, [train_len, val_len], generator=torch.Generator().manual_seed(self.seed))
+        dataset = dataset_class(root="./data", split="train", download=True, transform=self._transform)
+        train_len = int(0.8 * len(dataset))
+        val_len = len(dataset) - train_len
+        train_set, val_set = random_split(dataset, [train_len, val_len], generator=torch.Generator().manual_seed(self.seed))
         train_loader = DataLoader(train_set, batch_size=self.batch_size, shuffle=True)
         val_loader = DataLoader(val_set, batch_size=self.batch_size, shuffle=False)
 
