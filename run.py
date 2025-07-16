@@ -21,12 +21,11 @@ def main(
     dataset_class,
     output_path: Path,
     seed: int,
-    num_layers_to_freeze: int,
     learning_rate: float,
 ):
     logger.info("Fitting AutoML")
     print("Fitting AutoML")
-    automl = AutoML(seed=seed, num_layers_to_freeze=num_layers_to_freeze, lr=learning_rate)
+    automl = AutoML(seed=seed, lr=learning_rate)
     automl.fit(dataset_class, subsample=None)
     test_preds, test_labels = automl.predict(dataset_class)
     logger.info("Writing predictions to disk")
@@ -90,7 +89,7 @@ if __name__ == "__main__":
         final_epochs = 10 if args.dataset == "flowers" else 8
         automl = AutoML(
             seed=args.seed,
-            num_layers_to_freeze=0,  # Always fully fine-tuned for screenshot config
+            # Always fully fine-tuned for screenshot config
             lr=best_params.get("lr", 0.001),
             use_augmentation=True,
             backbone="resnet18",
@@ -141,7 +140,7 @@ if __name__ == "__main__":
             dataset_class=dataset_class,
             output_path=args.output_path,
             seed=args.seed,
-            num_layers_to_freeze=args.num_layers_to_freeze,
+          
             learning_rate=args.learning_rate
         )
 
