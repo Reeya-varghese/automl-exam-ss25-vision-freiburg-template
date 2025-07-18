@@ -21,6 +21,7 @@ class AutoML:
         batch_size: int = 32,
         use_augmentation: bool = True,
         backbone: str = "resnet18",
+        trial = None,
         epochs: int = 8,
         num_layers_to_freeze: int = 0,
         optimizer_name: str = "adam",
@@ -32,6 +33,7 @@ class AutoML:
         self.use_augmentation = use_augmentation
         self.batch_size = batch_size
         self.epochs = epochs
+        self.trial = trial
 
         self.optimizer_name = optimizer_name
         self._model: nn.Module | None = None
@@ -114,6 +116,12 @@ class AutoML:
                     val_targets.extend(target.cpu().numpy())
             val_acc = accuracy_score(val_targets, val_preds)
             self._history["val_acc"].append(val_acc)
+
+            if self.trial is not None:
+                self.trial.report(val_acc, epoch)
+                if self.trial.should_prune():
+                    self.trial.set_user_attr("history", self._history)
+                    raise optuna.TrialPruned()
             logger.info(f"Epoch {epoch + 1}, Loss: {epoch_loss:.4f}, Acc: {epoch_acc:.4f}, Val Acc: {val_acc:.4f}")
             print(f"Epoch {epoch + 1}, Loss: {epoch_loss:.4f}, Acc: {epoch_acc:.4f}, Val Acc: {val_acc:.4f}")
 
@@ -159,7 +167,8 @@ def optuna_objective(trial, dataset_class, seed=42):
         backbone=backbone,
         batch_size=batch_size,
         epochs=epochs,
-        optimizer_name=optimizer_name
+        optimizer_name=optimizer_name,
+        trial=trial
     )
     automl.fit(dataset_class, subsample=2000)  # Use a fixed subsample for all trials
     preds, labels = automl.predict(dataset_class)
