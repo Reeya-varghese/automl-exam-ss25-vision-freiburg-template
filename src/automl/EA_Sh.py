@@ -34,7 +34,7 @@ class AutoML:
         backbone: str = "resnet18",
         batch_size: int = 64,
         epochs: int = 10,
-        trial = None,
+    
         optimizer = 'adam',
     ) -> None:
         self.seed = seed
@@ -43,7 +43,7 @@ class AutoML:
         self.lr = lr
         self.backbone = backbone
         self.epochs = epochs
-        self.trial = trial
+        
         self.batch_size = batch_size
         self.use_augmentation = use_augmentation
         self._model: nn.Module | None = None
@@ -137,11 +137,7 @@ class AutoML:
             val_acc = accuracy_score(val_targets, val_preds)
             self._history["val_loss"].append(val_loss)
             self._history["val_acc"].append(val_acc)
-            if self.trial is not None:
-                self.trial.report(val_acc, epoch)
-                if self.trial.should_prune():
-                    self.trial.set_user_attr("history", self._history)
-                    raise optuna.TrialPruned()
+          
                 
             logger.info(f"Epoch {epoch + 1}, Loss: {epoch_loss:.4f}, Acc: {epoch_acc:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}")
             print(f"Epoch {epoch + 1}, Loss: {epoch_loss:.4f}, Acc: {epoch_acc:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}")
@@ -197,8 +193,7 @@ def optuna_objective(trial, dataset_class, seed=42):
         backbone=backbone,
         batch_size=batch_size,
         epochs=epochs,
-        optimizer=optimizer,
-        trial=trial,  # Pass the trial object for pruning
+        optimizer=optimizer
     )
     start = time.time()
     automl.fit(dataset_class, subsample=2000)
@@ -253,12 +248,12 @@ if __name__ == "__main__":
         seed=args.seed,
         reference_points=reference_points
     )
-    pruner = SuccessiveHalvingPruner()
+   
 
     study = optuna.create_study(
         directions=["maximize", "maximize", "minimize"],
         sampler=sampler,
-        pruner=pruner,
+        
     )
     study.optimize(lambda trial: optuna_objective(
         trial,
