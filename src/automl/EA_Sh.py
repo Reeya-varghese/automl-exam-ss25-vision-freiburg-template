@@ -15,7 +15,7 @@ from training import AutoML
 import optuna
 from optuna.samplers import NSGAIIISampler
 
-from utils.visualize import (
+from Plots import (
     save_optuna_visualizations,
     save_accuracy_histogram,
     save_metric_curves
