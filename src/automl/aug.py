@@ -1,1 +1,0 @@
-!python src/automl/autogluon.py --dataset flowers --output-path ag_preds.csv --leaderboard-path ag_leaderboard.csv --time-limit 3600

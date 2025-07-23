@@ -1,52 +1,74 @@
-import torch
-import random
-import numpy as np
+import argparse
 import logging
-import optuna
+from pathlib import Path
+from typing import Any, Tuple
+import time
+import torch
+import numpy as np
 from torch import nn, optim
-from torch.utils.data import DataLoader, Subset, random_split
+from torch.utils.data import DataLoader
 from torchvision import transforms
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, f1_score
+import random
+from Zero_cost import ZeroCostCandidateGenerator
 
-from automl.model import get_resnet_model
-from automl.utils import calculate_mean_std
+import optuna
 
+
+# --- Replace with your actual import paths ---
+from automl.model import get_model
+from utils import calculate_mean_std
+from vision_datasets import FashionDataset, FlowersDataset, EmotionsDataset
+from torch.utils.data import Subset, random_split
+# ---------------------------------------------
 logger = logging.getLogger(__name__)
 
 class AutoML:
+    
     def __init__(
         self,
         seed: int,
+        num_layers_to_freeze: int = 0,
         lr: float = 0.001,
-        batch_size: int = 32,
         use_augmentation: bool = True,
         backbone: str = "resnet18",
-        trial = None,
-        epochs: int = 8,
-        num_layers_to_freeze: int = 0,
-        optimizer_name: str = "adam",
+        batch_size: int = 64,
+        epochs: int = 10,
+        custom_head: nn.Module = None ,
+        optimizer = 'adam'
     ) -> None:
         self.seed = seed
-        self.lr = lr
-        self.backbone = backbone
         self.num_layers_to_freeze = num_layers_to_freeze
-        self.use_augmentation = use_augmentation
-        self.batch_size = batch_size
+        self.optimizer = optimizer
+        self.lr = lr
+        self.custom_head = custom_head
+        self.backbone = backbone
         self.epochs = epochs
-        self.trial = trial
-
-        self.optimizer_name = optimizer_name
+        
+        self.batch_size = batch_size
+        self.use_augmentation = use_augmentation
         self._model: nn.Module | None = None
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self._set_seed()
+    @property
+    def model(self):
+        return self._model
 
-    def fit(self, dataset_class: any, subsample: int = None) -> "AutoML":
+    @property
+    def history(self):
+        return self._history   
+
+
+    def _set_seed(self):
         random.seed(self.seed)
         np.random.seed(self.seed)
         torch.manual_seed(self.seed)
         torch.cuda.manual_seed(self.seed)
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print(f"Using device: {device}")
+
+    def fit(self, dataset_class: Any, subsample: int = None, trial: optuna.trial.Trial = None) -> "AutoML":
+      
 
         mean, std = calculate_mean_std(dataset_class)
         tfs = [
@@ -58,38 +80,46 @@ class AutoML:
         ]
         self._transform = transforms.Compose(tfs)
 
-        # 2000 sample subset, 80/20 split
-        
-        dataset = dataset_class(root="./data", split="train", download=True, transform=self._transform)
+       
+        dataset = dataset_class(
+            root="./data",
+            split='train',
+            download=True,
+            transform=self._transform
+        )
         if subsample is not None:
             indices = np.random.choice(len(dataset), subsample, replace=False)
             dataset = Subset(dataset, indices)
         train_len = int(0.8 * len(dataset))
         val_len = len(dataset) - train_len
         train_set, val_set = random_split(dataset, [train_len, val_len], generator=torch.Generator().manual_seed(self.seed))
+        
         train_loader = DataLoader(train_set, batch_size=self.batch_size, shuffle=True)
         val_loader = DataLoader(val_set, batch_size=self.batch_size, shuffle=False)
 
-        model = get_resnet_model(
-            self.backbone,  # fixed backbone
+        model = get_model(
+            self.backbone,
             num_classes=dataset_class.num_classes,
-            num_layers_to_freeze=self.num_layers_to_freeze,   # fully fine-tuned
-            grayscale=(dataset_class.channels == 1)
-        ).to(device)
+            grayscale=(dataset_class.channels == 1),
+            custom_head=self.custom_head
+        ).to(self.device)
+
+        if self.optimizer == 'adam':
+            optimizer = optim.Adam(model.parameters(), lr=self.lr)
+        elif self.optimizer:
+            optimizer = optim.SGD(model.parameters(), lr=self.lr, momentum=0.9)
 
         criterion = nn.CrossEntropyLoss()
-        optimizer = optim.Adam(model.parameters(), lr=self.lr) if self.optimizer_name == "adam" else optim.SGD(model.parameters(), lr=self.lr, momentum=0.9)
-        
-        # History for plotting
-        self._history = {"loss": [], "acc": [], "val_acc": []}
 
+        self._history = {"loss": [], "acc": [], "val_loss": [], "val_acc": []}
+      
         model.train()
         for epoch in range(self.epochs):
             loss_per_batch = []
             all_preds = []
             all_targets = []
             for data, target in train_loader:
-                data, target = data.to(device), target.to(device)
+                data, target = data.to(self.device), target.to(self.device)
                 optimizer.zero_grad()
                 output = model(data)
                 loss = criterion(output, target)
@@ -103,40 +133,52 @@ class AutoML:
             self._history["loss"].append(epoch_loss)
             self._history["acc"].append(epoch_acc)
 
-            # Validation
+            val_loss_per_batch = []
             val_preds = []
             val_targets = []
             model.eval()
             with torch.no_grad():
                 for data, target in val_loader:
-                    data, target = data.to(device), target.to(device)
+                    data, target = data.to(self.device), target.to(self.device)
                     output = model(data)
+                    loss = criterion(output, target)
                     pred = torch.argmax(output, 1).cpu().numpy()
+                    val_loss_per_batch.append(loss.item())
                     val_preds.extend(pred)
                     val_targets.extend(target.cpu().numpy())
+            val_loss = np.mean(val_loss_per_batch)
             val_acc = accuracy_score(val_targets, val_preds)
+            self._history["val_loss"].append(val_loss)
             self._history["val_acc"].append(val_acc)
+          
+                
+            logger.info(f"Epoch {epoch + 1}, Loss: {epoch_loss:.4f}, Acc: {epoch_acc:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}")
+            print(f"Epoch {epoch + 1}, Loss: {epoch_loss:.4f}, Acc: {epoch_acc:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}")
+            model.train()
+        self._model = model.eval()  
+        self.device = self.device
+        if trial:
+            trial.set_user_attr("history", self._history)
 
-            if self.trial is not None:
-                self.trial.report(val_acc, epoch)
-                if self.trial.should_prune():
-                    self.trial.set_user_attr("history", self._history)
-                    raise optuna.TrialPruned()
-            logger.info(f"Epoch {epoch + 1}, Loss: {epoch_loss:.4f}, Acc: {epoch_acc:.4f}, Val Acc: {val_acc:.4f}")
-            print(f"Epoch {epoch + 1}, Loss: {epoch_loss:.4f}, Acc: {epoch_acc:.4f}, Val Acc: {val_acc:.4f}")
-
-        self._model = model.eval()
-        self.device = device
         return self
 
-    def predict(self, dataset_class) -> tuple[np.ndarray, np.ndarray]:
+
+    def predict(self, dataset_class: Any) -> Tuple[np.ndarray, np.ndarray]:
+        
         mean, std = calculate_mean_std(dataset_class)
+        
         test_transform = transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean, std)
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean, std)
         ])
-        dataset = dataset_class(root="./data", split="test", download=True, transform=test_transform)
+
+        dataset = dataset_class(
+        root="./data",
+        split='test',
+        download=True,
+        transform=test_transform
+        )
         data_loader = DataLoader(dataset, batch_size=100, shuffle=False)
         predictions = []
         labels = []
@@ -151,28 +193,3 @@ class AutoML:
         predictions = np.concatenate(predictions)
         labels = np.concatenate(labels)
         return predictions, labels
-
-def optuna_objective(trial, dataset_class, seed=42):
-    lr = trial.suggest_float('lr', 1e-4, 1e-2, log=True)
-    batch_size = trial.suggest_categorical('batch_size', [32, 64])
-    optimizer_name = trial.suggest_categorical('optimizer', ['adam', 'sgd'])
-    backbone = "resnet18"  
-    use_augmentation = True
-    epochs = 8  
-    automl = AutoML(
-         seed=seed,
-        num_layers_to_freeze=0,
-        lr=lr,
-        use_augmentation=use_augmentation,
-        backbone=backbone,
-        batch_size=batch_size,
-        epochs=epochs,
-        optimizer_name=optimizer_name,
-        trial=trial
-    )
-    automl.fit(dataset_class, subsample=2000)  # Use a fixed subsample for all trials
-    preds, labels = automl.predict(dataset_class)
-    acc = accuracy_score(labels, preds) if not np.isnan(labels).any() else 0
-    trial.set_user_attr("history", automl._history)
-    return acc
-
