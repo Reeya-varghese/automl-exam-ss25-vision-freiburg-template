@@ -16,7 +16,7 @@ import optuna
 
 
 # --- Replace with your actual import paths ---
-from automl.model import get_model
+from model import get_model
 from utils import calculate_mean_std
 from vision_datasets import FashionDataset, FlowersDataset, EmotionsDataset
 from torch.utils.data import Subset, random_split
