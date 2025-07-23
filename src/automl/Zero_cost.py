@@ -90,7 +90,7 @@ class ZeroCostCandidateGenerator:
             backbone = self.backbones[backbone_name]
             feat_dim = self.get_feature_dim(backbone, backbone_name)
 
-            head = self.generate_random_head(feat_dim)
+            head = self.generate_random_head(feat_dim).to(self.device)
 
             feats = self.extract_features(backbone, backbone_name, self.real_input)
 
