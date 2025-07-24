@@ -17,10 +17,11 @@ class ZeroCostCandidateGenerator:
         self.top_k = top_k
         self.num_classes = num_classes
         self.device = DEVICE
+        grayscale = self.real_input.shape[1] == 1
 
         self.BACKBONE_NAMES = ["resnet18", "efficientnet_b0", "vit_base_patch16_224"]
         self.backbones = {
-            name: get_backbone_loader(name)(grayscale=True).to(self.device).eval()
+            name: get_backbone_loader(name)(grayscale=grayscale).to(self.device).eval()
             for name in self.BACKBONE_NAMES
         }
         
