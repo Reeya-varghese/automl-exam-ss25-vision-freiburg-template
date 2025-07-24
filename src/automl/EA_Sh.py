@@ -14,7 +14,7 @@ from Zero_cost import ZeroCostCandidateGenerator
 from training import AutoML
 import optuna
 from optuna.samplers import NSGAIIISampler
-
+from utils import get_transforms
 from Plots import (
     save_optuna_visualizations,
     save_accuracy_histogram,
@@ -96,13 +96,10 @@ if __name__ == "__main__":
         raise ValueError(f"Invalid dataset: {args.dataset}")
     
     mean, std = calculate_mean_std(dataset_class)
-    transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.RandomRotation(15),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize(mean, std),
-    ])
+    
+    grayscale = dataset_class.channels == 1
+    default_backbone = "resnet18" if grayscale else "vit_base_patch16_224"
+    transform = get_transforms(mean, std, phase="train", backbone_name=default_backbone)
 
     # Load and split dataset
     full_dataset = dataset_class(root="./data", split='train', download=True, transform=transform)

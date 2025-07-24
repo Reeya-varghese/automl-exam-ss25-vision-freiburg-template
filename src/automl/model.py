@@ -8,20 +8,24 @@ import timm
 def get_device():
     return 'cuda' if torch.cuda.is_available() else 'cpu'
 
-# --- Augmentation and Normalization pipeline ---
-def get_train_transforms(mean, std):
-    return transforms.Compose([
-        transforms.RandomRotation(degrees=15),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=mean, std=std),
-    ])
+def get_transforms(mean, std, phase="train", backbone_name="resnet18"):
+    is_vit = "vit" in backbone_name
+    to_tensor = transforms.Lambda(lambda x: x.repeat(3, 1, 1)) if is_vit else transforms.ToTensor()
 
-def get_val_transforms(mean, std):
-    return transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize(mean=mean, std=std),
-    ])
+    aug = [
+        transforms.Resize((224, 224)),
+        transforms.RandomRotation(15),
+        transforms.RandomHorizontalFlip()
+    ] if phase == "train" else [transforms.Resize((224, 224))]
+
+    aug += [
+        to_tensor,
+        transforms.Normalize(mean, std)
+    ]
+    return transforms.Compose(aug)
+
+
+
 def load_resnet18(grayscale=False):
     model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
     if grayscale:
@@ -44,9 +48,7 @@ def load_efficientnet_b0(grayscale=False):
 
 def load_vit(grayscale=False):
     model = timm.create_model('vit_base_patch16_224', pretrained=True)
-    if grayscale:
-        model.patch_embed.proj = nn.Conv2d(1, model.patch_embed.proj.out_channels,
-                                           kernel_size=16, stride=16)
+    
     return model
 
 def get_backbone_loader(backbone_name):
@@ -59,7 +61,7 @@ def get_backbone_loader(backbone_name):
     return loaders[backbone_name]
 
 
-def get_model(backbone_name, num_classes, grayscale=False, num_layers_to_freeze=0, custom_head=None):
+def get_model(backbone_name, num_classes, grayscale=False, custom_head=None):
     backbone = get_backbone_loader(backbone_name)(grayscale=grayscale)
 
     if backbone_name.startswith("resnet"):
@@ -69,6 +71,8 @@ def get_model(backbone_name, num_classes, grayscale=False, num_layers_to_freeze=
         features_dim = backbone.classifier.in_features
         backbone.classifier = nn.Identity()
     elif "vit" in backbone_name:
+        if "vit" in backbone_name and grayscale:
+            print("⚠️ Warning: Grayscale dataset with ViT — assuming transforms handle channel expansion.")
         backbone.head = nn.Identity()
         features_dim = 768
         if features_dim is None:

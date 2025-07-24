@@ -13,7 +13,7 @@ from sklearn.metrics import accuracy_score, f1_score
 import random
 from Zero_cost import ZeroCostCandidateGenerator
 import optuna
-from model import get_model
+from model import get_model, get_transforms
 from utils import calculate_mean_std
 from vision_datasets import FashionDataset, FlowersDataset, EmotionsDataset
 from torch.utils.data import Subset, random_split
@@ -69,14 +69,7 @@ class AutoML:
       
 
         mean, std = calculate_mean_std(dataset_class)
-        tfs = [
-            transforms.Resize((224, 224)),
-            transforms.RandomRotation(15),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            transforms.Normalize(mean, std),
-        ]
-        self._transform = transforms.Compose(tfs)
+        self._transform = get_transforms(mean, std, phase="train", backbone_name=self.backbone)
 
        
         dataset = dataset_class(
@@ -183,12 +176,9 @@ class AutoML:
     def predict(self, dataset_class: Any) -> Tuple[np.ndarray, np.ndarray]:
         
         mean, std = calculate_mean_std(dataset_class)
+        test_transform = get_transforms(mean, std, phase="test", backbone_name=self.backbone)
+
         
-        test_transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean, std)
-        ])
 
         dataset = dataset_class(
         root="./data",
