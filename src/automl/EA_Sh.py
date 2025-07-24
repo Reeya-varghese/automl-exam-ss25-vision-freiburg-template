@@ -56,6 +56,8 @@ def optuna_objective(
         custom_head=head
     )
     start = time.time()
+    print(head)
+
     automl.fit(dataset_class, subsample=2000, trial=trial)
     training_time = time.time() - start
     logger.info(f"Training time: {training_time:.2f} seconds")

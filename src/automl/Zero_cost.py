@@ -64,7 +64,12 @@ class ZeroCostCandidateGenerator:
     def extract_features(self, backbone, backbone_name, input_tensor):
         with torch.no_grad():
             if "vit" in backbone_name:
-                return backbone.forward_features(input_tensor)[:, 0, :]
+                features = backbone.forward_features(input_tensor)
+                if features.ndim == 3:
+                    features = features[:, 0, :]  # [CLS] token
+                else:
+                    features = features.mean(dim=1)  # fallback if [CLS] doesn't exist
+
             elif "efficientnet" in backbone_name:
                 x = backbone.forward_features(input_tensor)
                 return F.adaptive_avg_pool2d(x, 1).reshape(x.size(0), -1)
