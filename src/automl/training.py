@@ -1,21 +1,15 @@
-import argparse
 import logging
-from pathlib import Path
 from typing import Any, Tuple
-import time
 import torch
 from copy import deepcopy 
 import numpy as np
 from torch import nn, optim
 from torch.utils.data import DataLoader
-from torchvision import transforms
-from sklearn.metrics import accuracy_score, f1_score
+from sklearn.metrics import accuracy_score
 import random
-from Zero_cost import ZeroCostCandidateGenerator
 import optuna
 from model import get_model, get_transforms
 from utils import calculate_mean_std
-from vision_datasets import FashionDataset, FlowersDataset, EmotionsDataset
 from torch.utils.data import Subset, random_split
 # ---------------------------------------------
 logger = logging.getLogger(__name__)

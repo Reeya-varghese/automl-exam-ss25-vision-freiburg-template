@@ -5,25 +5,23 @@ from typing import Any, Tuple
 import time
 import torch
 import numpy as np
-from torch import nn, optim
 from torch.utils.data import DataLoader
-from torchvision import transforms
 from sklearn.metrics import accuracy_score, f1_score
-import random
+
 from Zero_cost import ZeroCostCandidateGenerator
 from training import AutoML
 import optuna
 from optuna.samplers import NSGAIIISampler
-from utils import get_transforms
+
 from Plots import (
     save_optuna_visualizations,
     save_accuracy_histogram,
     save_metric_curves
 )
-from model import get_model
+from model import get_transforms
 from utils import calculate_mean_std
 from vision_datasets import FashionDataset, FlowersDataset, EmotionsDataset
-from torch.utils.data import Subset, random_split
+from torch.utils.data import random_split
 # ---------------------------------------------
 logger = logging.getLogger(__name__)
 
