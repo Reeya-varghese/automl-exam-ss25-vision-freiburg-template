@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from torchvision import models, transforms
-
+from model import unfreeze_backbone_layers
 import timm
 
 # --- Utility for device selection ---
@@ -58,6 +58,18 @@ def get_backbone_loader(backbone_name):
     assert backbone_name in loaders, f"Unsupported backbone: {backbone_name}"
     return loaders[backbone_name]
 
+def unfreeze_backbone_layers(model, backbone_name):
+    if "resnet" in backbone_name:
+        for name, param in model.named_parameters():
+            param.requires_grad = "layer4" in name
+    elif "efficientnet" in backbone_name:
+        for name, param in model.named_parameters():
+            param.requires_grad = "blocks.6" in name or "blocks.7" in name
+    elif "vit" in backbone_name:
+        for name, param in model.named_parameters():
+            param.requires_grad = any(f"blocks.{i}" in name for i in [10, 11])
+    return model
+
 def get_model(backbone_name, num_classes, grayscale=False, num_layers_to_freeze=0, custom_head=None):
     backbone = get_backbone_loader(backbone_name)(grayscale=grayscale)
 
@@ -91,5 +103,6 @@ def get_model(backbone_name, num_classes, grayscale=False, num_layers_to_freeze=
         head = custom_head
 
     model = nn.Sequential(backbone, head)
+  
     return model
 

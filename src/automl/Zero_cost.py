@@ -42,18 +42,30 @@ class ZeroCostCandidateGenerator:
         return sum(p.grad.norm().item() for p in model.parameters() if p.grad is not None)
 
     def generate_random_head(self, input_dim):
-        hidden_dim = random.choice([64, 128, 256])
-        dropout = random.choice([0.0, 0.3, 0.5])
+        hidden_dim = random.choice([
+            [1024, 512],         # 2-layer MLP
+            [2048, 1024, 512],   # 3-layer MLP
+            [2048, 1024]         # simplified but deep
+        ])
+        dropout = random.choice([0.0, 0.1, 0.2])
         use_bn = random.choice([True, False])
-        activation = nn.GELU() if random.choice([True, False]) else nn.ReLU()
+        activation = nn.GELU() if random.random() < 0.5 else nn.ReLU()
 
-        layers = [nn.Linear(input_dim, hidden_dim)]
-        if use_bn:
-            layers.append(nn.BatchNorm1d(hidden_dim))
-        layers.append(activation)
-        if dropout > 0.0:
-            layers.append(nn.Dropout(dropout))
-        layers.append(nn.Linear(hidden_dim, self.num_classes))
+        layers = [nn.Flatten()]
+        prev_dim = input_dim
+
+        for hidden_dim in hidden_dim:
+            layers.append(nn.Linear(prev_dim, hidden_dim))
+            if use_bn:
+                layers.append(nn.BatchNorm1d(hidden_dim))
+            layers.append(activation)
+            if dropout > 0:
+                layers.append(nn.Dropout(dropout))
+            prev_dim = hidden_dim
+
+    # Final classification layer
+        layers.append(nn.Linear(prev_dim, self.num_classes))
+
         return nn.Sequential(*layers)
 
     def normalize(self, score_list):

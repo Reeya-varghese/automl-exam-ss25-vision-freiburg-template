@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Tuple
 import time
 import torch
+from copy import deepcopy 
 import numpy as np
 from torch import nn, optim
 from torch.utils.data import DataLoader
@@ -11,11 +12,7 @@ from torchvision import transforms
 from sklearn.metrics import accuracy_score, f1_score
 import random
 from Zero_cost import ZeroCostCandidateGenerator
-
 import optuna
-
-
-# --- Replace with your actual import paths ---
 from model import get_model
 from utils import calculate_mean_std
 from vision_datasets import FashionDataset, FlowersDataset, EmotionsDataset
@@ -33,7 +30,7 @@ class AutoML:
         use_augmentation: bool = True,
         backbone: str = "resnet18",
         batch_size: int = 64,
-        epochs: int = 10,
+        epochs: int = 20,
         custom_head: nn.Module = None ,
         optimizer = 'adam'
     ) -> None:
@@ -50,6 +47,7 @@ class AutoML:
         self._model: nn.Module | None = None
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self._set_seed()
+
     @property
     def model(self):
         return self._model
@@ -112,7 +110,12 @@ class AutoML:
         criterion = nn.CrossEntropyLoss()
 
         self._history = {"loss": [], "acc": [], "val_loss": [], "val_acc": []}
-      
+        
+        best_val_acc = 0.0
+        patience = 5
+        wait = 0
+        best_model_state = None
+
         model.train()
         for epoch in range(self.epochs):
             loss_per_batch = []
@@ -154,9 +157,23 @@ class AutoML:
                 
             logger.info(f"Epoch {epoch + 1}, Loss: {epoch_loss:.4f}, Acc: {epoch_acc:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}")
             print(f"Epoch {epoch + 1}, Loss: {epoch_loss:.4f}, Acc: {epoch_acc:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}")
+            if val_acc > best_val_acc:
+                best_val_acc = val_acc
+                best_model_state = deepcopy(model.state_dict())
+                wait = 0
+            else:
+                wait += 1
+                if wait >= patience:
+                    print(f"⏹️ Early stopping at epoch {epoch + 1} — Best Val Acc: {best_val_acc:.4f}")
+
+                    break
             model.train()
+        if best_model_state:
+            model.load_state_dict(best_model_state)
+       
         self._model = model.eval()  
         self.device = self.device
+
         if trial:
             trial.set_user_attr("history", self._history)
 
