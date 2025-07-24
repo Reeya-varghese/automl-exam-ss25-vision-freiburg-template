@@ -8,20 +8,26 @@ def get_device():
     return 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def get_transforms(mean, std, phase="train", backbone_name="resnet18"):
-    is_vit = "vit" in backbone_name
-    to_tensor = transforms.Lambda(lambda x: x.repeat(3, 1, 1)) if is_vit else transforms.ToTensor()
+    is_vit = "vit" in backbone_name.lower()
 
-    aug = [
-        transforms.Resize((224, 224)),
-        transforms.RandomRotation(15),
-        transforms.RandomHorizontalFlip()
-    ] if phase == "train" else [transforms.Resize((224, 224))]
+    tf = [transforms.Resize((224, 224))]
 
-    aug += [
-        to_tensor,
-        transforms.Normalize(mean, std)
-    ]
-    return transforms.Compose(aug)
+    if phase == "train":
+        tf += [
+            transforms.RandomRotation(15),
+            transforms.RandomHorizontalFlip()
+        ]
+
+    tf.append(transforms.ToTensor())  # convert PIL to tensor first
+
+    if is_vit:
+        # Now it's a tensor, so .repeat works
+        tf.append(transforms.Lambda(lambda x: x.repeat(3, 1, 1) if x.shape[0] == 1 else x))
+
+    tf.append(transforms.Normalize(mean, std))
+
+    return transforms.Compose(tf)
+
 
 
 
