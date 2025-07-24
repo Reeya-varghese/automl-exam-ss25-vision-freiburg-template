@@ -2,10 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import random
-import timm
-
 from copy import deepcopy
 from model import get_backbone_loader
+
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
@@ -113,12 +112,18 @@ class ZeroCostCandidateGenerator:
         for i in range(self.num_candidates):
             backbone_name = random.choice(self.BACKBONE_NAMES)
 
+            # 🛠️ Patch: expand grayscale images to 3 channels for ViT
+            if "vit" in backbone_name and self.real_input.shape[1] == 1:
+                input_tensor = self.real_input.repeat(1, 3, 1, 1)
+            else:
+                input_tensor = self.real_input
+
             backbone = self.backbones[backbone_name]
             feat_dim = self.get_feature_dim(backbone, backbone_name)
 
             head = self.generate_random_head(feat_dim).to(self.device)
 
-            feats = self.extract_features(backbone, backbone_name, self.real_input)
+            feats = self.extract_features(backbone, backbone_name, input_tensor)
 
             jac = self.get_jacobian_score(head, feats)
             grad = self.get_gradnorm_score(head, feats, self.real_target)
@@ -128,10 +133,8 @@ class ZeroCostCandidateGenerator:
                 "head": deepcopy(head),
                 "jacobian_score": jac,
                 "gradnorm_score": grad,
-             
-                "id": f"{backbone_name}_{i}"  # Add a unique ID
+                "id": f"{backbone_name}_{i}"
             })
-
 
         # Normalize and score
         jac_norm = self.normalize([c["jacobian_score"] for c in candidates])

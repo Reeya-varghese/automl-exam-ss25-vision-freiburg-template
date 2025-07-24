@@ -1,10 +1,9 @@
 import torch
 import torch.nn as nn
 from torchvision import models, transforms
-
 import timm
 
-# --- Utility for device selection ---
+
 def get_device():
     return 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -36,6 +35,7 @@ def load_resnet18(grayscale=False):
             model.conv1.weight = nn.Parameter(conv1.weight.sum(dim=1, keepdim=True))
     return model
 
+
 def load_efficientnet_b0(grayscale=False):
     model = timm.create_model('efficientnet_b0', pretrained=True)
     if grayscale:
@@ -46,10 +46,12 @@ def load_efficientnet_b0(grayscale=False):
             model.conv_stem.weight = nn.Parameter(conv.weight.sum(dim=1, keepdim=True))
     return model
 
+
 def load_vit(grayscale=False):
     model = timm.create_model('vit_base_patch16_224', pretrained=True)
     
     return model
+
 
 def get_backbone_loader(backbone_name):
     loaders = {
