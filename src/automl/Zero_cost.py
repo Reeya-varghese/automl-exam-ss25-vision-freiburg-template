@@ -95,16 +95,15 @@ class ZeroCostCandidateGenerator:
     def get_feature_dim(self, model, backbone_name):
         model.eval()
     
-        # Detect if real_input is grayscale (1 channel) or RGB (3 channels)
+        if "vit" in backbone_name:
+            dummy_input = torch.randn(1, 3, 224, 224).to(self.device)
+            feats = self.extract_features(model, backbone_name, dummy_input)
+            return feats.shape[-1]
+
         input_channels = self.real_input.shape[1]
         dummy_input = torch.randn(1, input_channels, 224, 224).to(self.device)
-    
-    # Vit has fixed known feature dim
-        if "vit" in backbone_name:
-            return 768
-
         feats = self.extract_features(model, backbone_name, dummy_input)
-        return feats.shape[-1] 
+        return feats.shape[-1]
     
     def get_top_k_candidates(self):
         candidates = []
