@@ -69,7 +69,7 @@ class ZeroCostCandidateGenerator:
                     features = features[:, 0, :]  # [CLS] token
                 else:
                     features = features.mean(dim=1)  # fallback if [CLS] doesn't exist
-
+                return features
             elif "efficientnet" in backbone_name:
                 x = backbone.forward_features(input_tensor)
                 return F.adaptive_avg_pool2d(x, 1).reshape(x.size(0), -1)
@@ -81,6 +81,8 @@ class ZeroCostCandidateGenerator:
             else:
                 raise ValueError(f"Unsupported backbone: {backbone_name}")
     def get_feature_dim(self, model, backbone_name):
+        if "vit" in backbone_name:
+            return 768 
         model.eval()
         dummy_input = torch.randn(1, 1, 224, 224).to(self.device)
         feats = self.extract_features(model, backbone_name, dummy_input)

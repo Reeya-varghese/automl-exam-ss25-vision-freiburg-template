@@ -68,15 +68,10 @@ def get_model(backbone_name, num_classes, grayscale=False, num_layers_to_freeze=
         features_dim = backbone.classifier.in_features
         backbone.classifier = nn.Identity()
     elif "vit" in backbone_name:
-    # Auto-infer feature dimension from forward_features output
-        backbone.eval()
-        dummy_input = torch.randn(1, 1 if grayscale else 3, 224, 224)
-        with torch.no_grad():
-            features = backbone.forward_features(dummy_input)
-            features_dim = features.shape[-1] 
-            backbone.head = nn.Identity()
-            if features_dim is None:
-                raise ValueError("Unable to extract ViT feature dimension")
+        backbone.head = nn.Identity()
+        features_dim = 768
+        if features_dim is None:
+            raise ValueError("Unable to extract ViT feature dimension")
     else:
         raise ValueError(f"Unsupported backbone: {backbone_name}")
 
