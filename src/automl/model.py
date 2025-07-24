@@ -73,7 +73,8 @@ def get_model(backbone_name, num_classes, grayscale=False, num_layers_to_freeze=
         dummy_input = torch.randn(1, 1 if grayscale else 3, 224, 224)
         with torch.no_grad():
             features = backbone.forward_features(dummy_input)
-            features_dim = features.shape[-1] if features.ndim == 3 else None
+            features_dim = features.shape[-1] 
+            backbone.head = nn.Identity()
             if features_dim is None:
                 raise ValueError("Unable to extract ViT feature dimension")
     else:
