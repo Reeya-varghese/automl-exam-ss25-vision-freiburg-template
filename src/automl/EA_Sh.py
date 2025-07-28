@@ -20,7 +20,7 @@ from Plots import (
 )
 from model import get_transforms
 from utils import calculate_mean_std
-from vision_datasets import FashionDataset, FlowersDataset, EmotionsDataset
+from vision_datasets import FashionDataset, FlowersDataset, EmotionsDataset, SkinCancerDataset
 from torch.utils.data import random_split
 # ---------------------------------------------
 logger = logging.getLogger(__name__)
@@ -90,6 +90,8 @@ if __name__ == "__main__":
         dataset_class = FlowersDataset
     elif args.dataset == "emotions":
         dataset_class = EmotionsDataset
+    elif args.dataset == "skin cancer":    
+        dataset_class = SkinCancerDataset
     else:
         raise ValueError(f"Invalid dataset: {args.dataset}")
     

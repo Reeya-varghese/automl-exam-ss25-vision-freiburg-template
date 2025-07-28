@@ -14,10 +14,6 @@ from torchvision.datasets.utils import download_and_extract_archive, check_integ
 import tempfile
 import shutil
 
-# URL to the zip file containing all phase 1 datasets
-BASE_URL = "https://ml.informatik.uni-freiburg.de/research-artifacts/automl-exam-25-vision/"
-ZIP_FILE = "vision-phase1.zip"
-
 
 class BaseVisionDataset(VisionDataset):
     """A base class for all vision datasets.
@@ -36,13 +32,15 @@ class BaseVisionDataset(VisionDataset):
             If true, downloads the dataset zip and extracts it into the root directory.
             If dataset is already downloaded, it is not downloaded again.
     """
-    _download_url_prefix = BASE_URL
-    _download_file = ZIP_FILE
+  
     _dataset_name: str
     width: int
     height: int
     channels: int
     num_classes: int
+
+    PHASE1_URL = "https://ml.informatik.uni-freiburg.de/research-artifacts/automl-exam-25-vision/vision-phase1.zip "
+    PHASE2_URL = "https://ml.informatik.uni-freiburg.de/research-artifacts/automl-exam-25-vision/vision-phase2.zip "
 
     def __init__(
         self,
@@ -62,8 +60,8 @@ class BaseVisionDataset(VisionDataset):
 
         if not self._check_integrity():
             raise RuntimeError(
-                "Dataset not found or corrupted. You can use download=True to download it "
-                f"or download it manually from {self._download_url_prefix}{self._download_file}"
+                "Dataset not found or corrupted. Use download=True to download required files, "
+                "or download them manually from https://ml.informatik.uni-freiburg.de/research-artifacts/automl-exam-25-vision/"
             )
 
         data = pd.read_csv(self._base_folder / f"{self._split}.csv")
@@ -73,48 +71,51 @@ class BaseVisionDataset(VisionDataset):
     def _check_integrity(self) -> bool:
         train_images_folder = self._base_folder / "images_train"
         test_images_folder = self._base_folder / "images_test"
-        # Check if image folders exist
         if not (train_images_folder.exists() and train_images_folder.is_dir()) or \
            not (test_images_folder.exists() and test_images_folder.is_dir()):
             return False
-
-        # Check if csv files exist
         if not (self._base_folder / "train.csv").exists() or not (self._base_folder / "test.csv").exists():
             return False
-
         return True
 
     def download(self) -> None:
-        """Download and extract the zip file containing all datasets into root directory."""
-        if self._check_integrity():
-            print("Dataset already downloaded and verified.")
+        """Download dataset if missing, choosing phase1 or phase2 based on dataset name."""
+        data_path = Path(self.root)
+        data_path.mkdir(exist_ok=True)
+
+        if self._base_folder.exists():
+            print(f"{self._dataset_name} dataset already exists. Skipping download.")
             return
 
-        # Extract to temporary location
-     
+        if self._dataset_name == "skin_cancer":
+            phase_url = self.PHASE2_URL
+            phase_name = "phase2"
+        else:
+            phase_url = self.PHASE1_URL
+            phase_name = "phase1"
+
         with tempfile.TemporaryDirectory() as temp_dir:
-            print(f"Downloading and extracting {self._download_file}...")
-            
+            print(f"Downloading and extracting {phase_name} dataset...")
+            zip_name = f"{phase_name}.zip"
+
             download_and_extract_archive(
-                url=f"{self._download_url_prefix}{self._download_file}",
+                url=phase_url,
                 download_root=temp_dir,
                 extract_root=temp_dir,
-                filename=self._download_file,
-                remove_finished=True
+                filename=zip_name,
+                remove_finished=True,
             )
-            
-            # Find phase folder and move contents to data/
+
             phase_folder = next(Path(temp_dir).glob("phase*"))
-            data_path = Path(self.root)
-            data_path.mkdir(exist_ok=True)
-            
             for item in phase_folder.iterdir():
                 destination = data_path / item.name
                 if destination.exists():
-                    shutil.rmtree(destination)
+                    print(f"Skipping existing item: {destination}")
+                    continue
                 shutil.move(str(item), str(destination))
-        
-        print("Download completed.")
+
+            print(f"{phase_name} download completed.")
+
     def extra_repr(self) -> str:
         """String representation of the dataset."""
         return f"split={self._split}"
@@ -145,7 +146,7 @@ class BaseVisionDataset(VisionDataset):
 class EmotionsDataset(BaseVisionDataset):
     """ Emotions Dataset.
 
-    This dataset contains images of faces displaying in to one of seven emotions
+    "This dataset contains images of faces displaying one of seven emotions
     (0=Angry, 1=Disgust, 2=Fear, 3=Happy, 4=Sad, 5=Surprise, 6=Neutral).
     """
     _dataset_name = "emotions"
@@ -177,3 +178,19 @@ class FashionDataset(BaseVisionDataset):
     height = 28
     channels = 1
     num_classes = 10
+
+
+class SkinCancerDataset(BaseVisionDataset):
+    """SkinCancer Dataset.
+    
+    The SkinCancer dataset contains images of skin lesions. The task is to classify what kind of skin lesion it is.
+
+    This is the test dataset for the AutoML exam. It does not contain the labels for the test split.
+    You are expected to predict these labels and save them to a file called `final_test_preds.npy` for your
+    final submission.
+    """
+    _dataset_name = "skin_cancer"
+    width = 450
+    height = 450
+    channels = 3
+    num_classes = 7
