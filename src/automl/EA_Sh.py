@@ -75,7 +75,7 @@ def optuna_objective(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--n-trials", type=int, default=10, help="Number of Optuna trials.")
-    parser.add_argument("--dataset", type=str, required=True, choices=["fashion", "flowers", "emotions"])
+    parser.add_argument("--dataset", type=str, required=True, choices=["fashion", "flowers", "emotions", "skin cancer"],)
     parser.add_argument("--output-path", type=Path, default=Path("predictions.npy"), help="Path to save predictions.")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility.")
     parser.add_argument("--quiet", action="store_true", help="Log only warnings and errors.")
