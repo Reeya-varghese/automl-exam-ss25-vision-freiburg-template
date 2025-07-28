@@ -167,7 +167,7 @@ class AutoML:
         return self
 
 
-    def predict(self, dataset_class: Any) -> Tuple[np.ndarray, np.ndarray]:
+    def predict_on(self, dataset_class: Any, split="test") -> Tuple[np.ndarray, np.ndarray]:
         
         mean, std = calculate_mean_std(dataset_class)
         test_transform = get_transforms(mean, std, phase="test", backbone_name=self.backbone)
@@ -176,7 +176,7 @@ class AutoML:
 
         dataset = dataset_class(
         root="./data",
-        split='test',
+        split=split,
         download=True,
         transform=test_transform
         )
@@ -196,3 +196,7 @@ class AutoML:
         logger.info("Writing predictions to disk")
         
         return predictions, labels
+    
+    def predict(self, dataset_class: Any) -> np.ndarray:
+        preds, _ = self.predict_on(dataset_class, split="test")
+        return preds
