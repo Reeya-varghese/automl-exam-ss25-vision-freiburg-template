@@ -62,7 +62,7 @@ def optuna_objective(
     trial.set_user_attr("head_type", head.__class__.__name__)
     trial.set_user_attr("backbone", backbone)
 
-    preds, labels = automl.predict(dataset_class, split='val')
+    preds, labels = automl.predict_on(dataset_class, split='val')
     
     if not np.isnan(labels).any():
         acc = accuracy_score(labels, preds)
@@ -174,7 +174,7 @@ if __name__ == "__main__":
         custom_head=head
     )
     automl.fit(dataset_class, subsample=None)
-    test_preds, test_labels = automl.predict(dataset_class, split='test')
+    test_preds, test_labels = automl.predict(dataset_class)
     
     if args.dataset == "skin_cancer": 
         output_path = Path("final_test_preds.npy")
