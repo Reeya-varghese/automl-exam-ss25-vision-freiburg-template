@@ -193,4 +193,6 @@ class AutoML:
                 predictions.append(predicted)
         predictions = np.concatenate(predictions)
         labels = np.concatenate(labels)
+        logger.info("Writing predictions to disk")
+        
         return predictions, labels

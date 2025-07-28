@@ -175,8 +175,15 @@ if __name__ == "__main__":
     )
     automl.fit(dataset_class, subsample=None)
     test_preds, test_labels = automl.predict(dataset_class)
-    with args.output_path.open("wb") as f:
+    
+    if args.dataset == "skin cancer": 
+        output_path = Path("final_test_preds.npy")
+    else :
+        output_path = args.output_path    
+            
+    with output_path.open("wb") as f:
         np.save(f, test_preds)
+
     print(f"✅Predictions for best-accuracy config saved to {args.output_path}")
     if not np.isnan(test_labels).any():
         acc = accuracy_score(test_labels, test_preds)
