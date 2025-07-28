@@ -75,7 +75,7 @@ def optuna_objective(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--n-trials", type=int, default=10, help="Number of Optuna trials.")
-    parser.add_argument("--dataset", type=str, required=True, choices=["fashion", "flowers", "emotions", "skincancer"],)
+    parser.add_argument("--dataset", type=str, required=True, choices=["fashion", "flowers", "emotions", "skin_cancer"],)
     parser.add_argument("--output-path", type=Path, default=Path("predictions.npy"), help="Path to save predictions.")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility.")
     parser.add_argument("--quiet", action="store_true", help="Log only warnings and errors.")
@@ -90,7 +90,7 @@ if __name__ == "__main__":
         dataset_class = FlowersDataset
     elif args.dataset == "emotions":
         dataset_class = EmotionsDataset
-    elif args.dataset == "skincancer":    
+    elif args.dataset == "skin_cancer":    
         dataset_class = SkinCancerDataset
     else:
         raise ValueError(f"Invalid dataset: {args.dataset}")
@@ -176,7 +176,7 @@ if __name__ == "__main__":
     automl.fit(dataset_class, subsample=None)
     test_preds, test_labels = automl.predict(dataset_class)
     
-    if args.dataset == "skin cancer": 
+    if args.dataset == "skin_cancer": 
         output_path = Path("final_test_preds.npy")
     else :
         output_path = args.output_path    
