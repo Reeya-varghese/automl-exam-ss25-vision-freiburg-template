@@ -62,7 +62,7 @@ def optuna_objective(
     trial.set_user_attr("head_type", head.__class__.__name__)
     trial.set_user_attr("backbone", backbone)
 
-    preds, labels = automl.predict_on(dataset_class, split='val')
+    preds, labels = automl.evaluate_on_val()
     
     if not np.isnan(labels).any():
         acc = accuracy_score(labels, preds)

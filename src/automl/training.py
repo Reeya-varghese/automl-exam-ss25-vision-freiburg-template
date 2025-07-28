@@ -64,6 +64,7 @@ class AutoML:
 
         mean, std = calculate_mean_std(dataset_class)
         self._transform = get_transforms(mean, std, phase="train", backbone_name=self.backbone)
+       
 
        
         dataset = dataset_class(
@@ -78,7 +79,7 @@ class AutoML:
         train_len = int(0.8 * len(dataset))
         val_len = len(dataset) - train_len
         train_set, val_set = random_split(dataset, [train_len, val_len], generator=torch.Generator().manual_seed(self.seed))
-        
+        self._val_set = val_set
         train_loader = DataLoader(train_set, batch_size=self.batch_size, shuffle=True)
         val_loader = DataLoader(val_set, batch_size=self.batch_size, shuffle=False)
 
@@ -172,8 +173,6 @@ class AutoML:
         mean, std = calculate_mean_std(dataset_class)
         test_transform = get_transforms(mean, std, phase="test", backbone_name=self.backbone)
 
-        
-
         dataset = dataset_class(
         root="./data",
         split=split,
@@ -200,3 +199,19 @@ class AutoML:
     def predict(self, dataset_class: Any) -> np.ndarray:
         preds, _ = self.predict_on(dataset_class, split="test")
         return preds
+    
+    def evaluate_on_val(self) -> Tuple[np.ndarray, np.ndarray]:
+        data_loader = DataLoader(self._val_set, batch_size=100, shuffle=False)
+        predictions, labels = [], []
+
+        self._model.eval()
+        with torch.no_grad():
+            for data, target in data_loader:
+                data = data.to(self.device)
+                output = self._model(data)
+                pred = torch.argmax(output, dim=1).cpu().numpy()
+                predictions.append(pred)
+                labels.append(target.cpu().numpy())
+
+        return np.concatenate(predictions), np.concatenate(labels)
+ 
