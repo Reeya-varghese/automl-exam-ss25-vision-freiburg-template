@@ -197,8 +197,9 @@ class AutoML:
         return predictions, labels
     
     def predict(self, dataset_class: Any) -> np.ndarray:
-        preds, _ = self.predict_on(dataset_class, split="test")
-        return preds
+        preds, labels= self.predict_on(dataset_class, split="test")
+        
+        return preds, labels
     
     def evaluate_on_val(self) -> Tuple[np.ndarray, np.ndarray]:
         data_loader = DataLoader(self._val_set, batch_size=100, shuffle=False)
