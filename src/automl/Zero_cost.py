@@ -19,12 +19,12 @@ class ZeroCostCandidateGenerator:
         grayscale = self.real_input.shape[1] == 1
 
         self.BACKBONE_NAMES = [
-            "resnet18",
-            "efficientnet_b0",
-            "vit_base_patch16_224",
-            "swin_tiny_patch4_window7_224",
-            "convnext_tiny"
-        ]
+        "resnet18",
+        "efficientnet_b0",
+        "vit_base_patch16_224",
+        "swin_tiny_patch4_window7_224",
+        "convnext_tiny"
+]
 
         self.backbones = {
             name: get_backbone_loader(name)(grayscale=grayscale).to(self.device).eval()
@@ -49,10 +49,10 @@ class ZeroCostCandidateGenerator:
         return sum(p.grad.norm().item() for p in model.parameters() if p.grad is not None)
 
     def generate_random_head(self, input_dim):
-        hidden_layers = random.choice([
-            [1024, 512],
-            [2048, 1024, 512],
-            [2048, 1024]
+        hidden_dim = random.choice([
+            [1024, 512],         # 2-layer MLP
+            [2048, 1024, 512],   # 3-layer MLP
+            [2048, 1024]         # simplified but deep
         ])
         dropout = random.choice([0.0, 0.1, 0.2])
         use_bn = random.choice([True, False])
@@ -61,21 +61,19 @@ class ZeroCostCandidateGenerator:
         layers = [nn.Flatten()]
         prev_dim = input_dim
 
-        for h in hidden_layers:
-            layers.append(nn.Linear(prev_dim, h))
+        for hidden_dim in hidden_dim:
+            layers.append(nn.Linear(prev_dim, hidden_dim))
             if use_bn:
-                layers.append(nn.BatchNorm1d(h))
+                layers.append(nn.BatchNorm1d(hidden_dim))
             layers.append(activation)
             if dropout > 0:
                 layers.append(nn.Dropout(dropout))
-            prev_dim = h
+            prev_dim = hidden_dim
 
-    # ✅ Now add final output layer with correct output class size
+    # Final classification layer
         layers.append(nn.Linear(prev_dim, self.num_classes))
 
         return nn.Sequential(*layers)
-
-
 
     def normalize(self, score_list):
         min_val, max_val = min(score_list), max(score_list)
@@ -86,43 +84,45 @@ class ZeroCostCandidateGenerator:
         with torch.no_grad():
             if "vit" in backbone_name:
                 features = backbone.forward_features(input_tensor)
-
                 if features.ndim == 3:
                     features = features[:, 0, :]  # [CLS] token
-
                 else:
                     features = features.mean(dim=1)  # fallback if [CLS] doesn't exist
                 return features
-            
+            elif "swin" in backbone_name or "convnext" in backbone_name:
+                x = backbone.forward_features(input_tensor)
+                if x.ndim == 3:
+                    return x.mean(dim=1)
+                elif x.ndim == 4:
+                    return F.adaptive_avg_pool2d(x, 1).reshape(x.size(0), -1)
+                else:
+                    raise ValueError(f"Unexpected shape from {backbone_name}: {x.shape}")
+                
             elif "efficientnet" in backbone_name:
                 x = backbone.forward_features(input_tensor)
                 return F.adaptive_avg_pool2d(x, 1).reshape(x.size(0), -1)
-            
             elif "resnet" in backbone_name:
                 x = backbone.conv1(input_tensor); x = backbone.bn1(x); x = backbone.relu(x)
                 x = backbone.maxpool(x); x = backbone.layer1(x); x = backbone.layer2(x)
                 x = backbone.layer3(x); x = backbone.layer4(x); x = backbone.avgpool(x)
                 return torch.flatten(x, 1)
-            
-            elif "swin" in backbone_name or "convnext" in backbone_name:
-                x = backbone.forward_features(input_tensor)
-                return x.mean(dim=1) if x.ndim == 3 else x  # handle [B, C, H, W] or [B, Tokens, D]
-            
             else:
                 raise ValueError(f"Unsupported backbone: {backbone_name}")
+            
 
+    # ------------------ Feature Dimension Extraction ------------------ #
     def get_feature_dim(self, model, backbone_name):
-        input_tensor = self.real_input
-        if any(k in backbone_name for k in ["vit", "swin", "convnext"]) and input_tensor.shape[1] == 1:
-            input_tensor = input_tensor.repeat(1, 3, 1, 1)
-
-        feats = self.extract_features(model, backbone_name, input_tensor)
-        if feats is None:
-            raise ValueError(f"Feature extraction failed for {backbone_name}")
+        model.eval()
     
-        return feats.shape[1]
+        if any(k in backbone_name for k in ["vit", "swin", "convnext"]):
+            dummy_input = torch.randn(1, 3, 224, 224).to(self.device)
+        else:
+            dummy_input = torch.randn(1, self.real_input.shape[1], 224, 224).to(self.device)
 
+        feats = self.extract_features(model, backbone_name, dummy_input)
+        return feats.shape[-1]
 
+    # ------------------ Candidate Generation ------------------ #
     
     def get_top_k_candidates(self):
         candidates = []
@@ -130,11 +130,11 @@ class ZeroCostCandidateGenerator:
         for i in range(self.num_candidates):
             backbone_name = random.choice(self.BACKBONE_NAMES)
 
-            if any(name in backbone_name for name in ["vit", "swin", "convnext"]) and self.real_input.shape[1] == 1:
+            if any(k in backbone_name for k in ["vit", "swin", "convnext"]) and self.real_input.shape[1] == 1:
+
                 input_tensor = self.real_input.repeat(1, 3, 1, 1)
             else:
                 input_tensor = self.real_input
-
 
             backbone = self.backbones[backbone_name]
             feat_dim = self.get_feature_dim(backbone, backbone_name)
@@ -161,6 +161,4 @@ class ZeroCostCandidateGenerator:
             c["combined_score"] = 0.5 * jac_norm[i] + 0.5 * grad_norm[i]
 
         ranked = sorted(candidates, key=lambda x: x["combined_score"], reverse=True)
-        print(f"🎯 Backbone: {backbone_name}, feat_dim: {feat_dim}, feats.shape: {feats.shape}")
-
-        return ranked[:self.top_k]
+        return ranked[:self.top_k] 
