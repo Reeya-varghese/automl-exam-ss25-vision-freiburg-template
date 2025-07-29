@@ -49,10 +49,10 @@ class ZeroCostCandidateGenerator:
         return sum(p.grad.norm().item() for p in model.parameters() if p.grad is not None)
 
     def generate_random_head(self, input_dim):
-        hidden_dim = random.choice([
-            [1024, 512],         # 2-layer MLP
-            [2048, 1024, 512],   # 3-layer MLP
-            [2048, 1024]         # simplified but deep
+        hidden_layers = random.choice([
+            [1024, 512],
+            [2048, 1024, 512],
+            [2048, 1024]
         ])
         dropout = random.choice([0.0, 0.1, 0.2])
         use_bn = random.choice([True, False])
@@ -61,19 +61,21 @@ class ZeroCostCandidateGenerator:
         layers = [nn.Flatten()]
         prev_dim = input_dim
 
-        for hidden_dim in hidden_dim:
-            layers.append(nn.Linear(prev_dim, hidden_dim))
+        for h in hidden_layers:
+            layers.append(nn.Linear(prev_dim, h))
             if use_bn:
-                layers.append(nn.BatchNorm1d(hidden_dim))
+                layers.append(nn.BatchNorm1d(h))
             layers.append(activation)
             if dropout > 0:
                 layers.append(nn.Dropout(dropout))
-            prev_dim = hidden_dim
+            prev_dim = h
 
-    # Final classification layer
+    # ✅ Now add final output layer with correct output class size
         layers.append(nn.Linear(prev_dim, self.num_classes))
 
         return nn.Sequential(*layers)
+
+
 
     def normalize(self, score_list):
         min_val, max_val = min(score_list), max(score_list)
