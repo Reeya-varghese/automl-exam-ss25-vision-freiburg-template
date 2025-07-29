@@ -163,8 +163,8 @@ def optuna_objective(
     seed: int = 42,
     top_k_candidates: list[dict[str, Any]] = None,
     carbon_budget_kg: float = 0.1,
-    enable_progressive: bool = True
-    total_trials: int = 10,  # Add this parameter
+    enable_progressive: bool = True,
+    total_trials: int = 10 # Add this parameter
     ) -> Tuple[float, float, float, float, float]:
     """Enhanced objective with carbon and GPU tracking"""
     
