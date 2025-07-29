@@ -115,9 +115,11 @@ class ZeroCostCandidateGenerator:
         input_tensor = self.real_input
         if any(k in backbone_name for k in ["vit", "swin", "convnext"]) and input_tensor.shape[1] == 1:
             input_tensor = input_tensor.repeat(1, 3, 1, 1)
-    
+
         feats = self.extract_features(model, backbone_name, input_tensor)
-        assert feats is not None, f"Feature extraction failed for {backbone_name}"
+        if feats is None:
+            raise ValueError(f"Feature extraction failed for {backbone_name}")
+    
         return feats.shape[1]
 
 
