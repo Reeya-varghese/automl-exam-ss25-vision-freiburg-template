@@ -354,7 +354,7 @@ if __name__ == "__main__":
         seed=args.seed,
         top_k_candidates=top_k_candidates,
         carbon_budget_kg=args.carbon_budget,
-        enable_progressive=args.enable_progressive
+        enable_progressive=args.enable_progressive,
         total_trials=args.n_trials  # Fix: Pass the total number of trials
     ), n_trials=args.n_trials)
 
