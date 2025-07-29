@@ -139,6 +139,9 @@ class AutoML:
                     val_targets.extend(target.cpu().numpy())
             val_loss = np.mean(val_loss_per_batch)
             val_acc = accuracy_score(val_targets, val_preds)
+            trial.report(val_acc, step=epoch)
+            if trial.should_prune():
+                raise optuna.TrialPruned()
             self._history["val_loss"].append(val_loss)
             self._history["val_acc"].append(val_acc)
           
@@ -198,7 +201,7 @@ class AutoML:
     
     def predict(self, dataset_class: Any) -> np.ndarray:
         preds, labels= self.predict_on(dataset_class, split="test")
-        
+
         return preds, labels
     
     def evaluate_on_val(self) -> Tuple[np.ndarray, np.ndarray]:

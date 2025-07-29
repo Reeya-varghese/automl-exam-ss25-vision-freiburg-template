@@ -7,11 +7,12 @@ import torch
 import numpy as np
 from torch.utils.data import DataLoader
 from sklearn.metrics import accuracy_score, f1_score
-from codecarbon import EmissionsTracker
+
 from Zero_cost import ZeroCostCandidateGenerator
 from training import AutoML
 import optuna
-from optuna.samplers import NSGAIIISampler
+from optuna.pruners import HyperbandPruner
+from optuna.samplers import TPESampler
 
 from Plots import (
     save_optuna_visualizations,
@@ -74,7 +75,7 @@ def optuna_objective(
     else:
         acc = 0
         f1 = 0
-    return acc, f1, training_time, em   
+    return acc, f1, training_time
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -124,29 +125,17 @@ if __name__ == "__main__":
     for i, c in enumerate(top_k_candidates):
         print(f"[{i+1}] Backbone: {c['backbone']}, Combined Score: {c['combined_score']:.4f}")
     
-    # Reference points for NSGAIII
-    reference_points = np.array([
-        [1, 0, 0],
-        [0, 1, 0],
-        [0, 0, 1],
-        [1/3, 1/3, 1/3]
-    ])
-
-    # GA + SH Hyperparameter Optimization
-    sampler = NSGAIIISampler(
-        population_size=40,
-        mutation_prob=0.2,
-        crossover_prob=0.9,
-        swapping_prob=0.5,
+    
+    # BOHB Hyperparameter Optimization
+    sampler = TPESampler(
         seed=args.seed,
-        reference_points=reference_points
-    )
-   
+        multivariate=True)
+    pruner = HyperbandPruner()
 
     study = optuna.create_study(
-        directions=["maximize", "maximize", "minimize", "minimize"],
+        directions=["maximize", "maximize", "minimize"],
         sampler=sampler,
-        
+        pruner=pruner
     )
     study.optimize(lambda trial: optuna_objective(
         trial,

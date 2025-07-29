@@ -18,7 +18,14 @@ class ZeroCostCandidateGenerator:
         self.device = DEVICE
         grayscale = self.real_input.shape[1] == 1
 
-        self.BACKBONE_NAMES = ["resnet18", "efficientnet_b0", "vit_base_patch16_224"]
+        self.BACKBONE_NAMES = [
+            "resnet18",
+            "efficientnet_b0",
+            "vit_base_patch16_224",
+            "swin_tiny_patch4_window7_224",
+            "convnext_tiny"
+        ]
+
         self.backbones = {
             name: get_backbone_loader(name)(grayscale=grayscale).to(self.device).eval()
             for name in self.BACKBONE_NAMES
@@ -77,21 +84,31 @@ class ZeroCostCandidateGenerator:
         with torch.no_grad():
             if "vit" in backbone_name:
                 features = backbone.forward_features(input_tensor)
+
                 if features.ndim == 3:
                     features = features[:, 0, :]  # [CLS] token
+
                 else:
                     features = features.mean(dim=1)  # fallback if [CLS] doesn't exist
-                return features
+                    return features
+            
             elif "efficientnet" in backbone_name:
                 x = backbone.forward_features(input_tensor)
                 return F.adaptive_avg_pool2d(x, 1).reshape(x.size(0), -1)
+            
             elif "resnet" in backbone_name:
                 x = backbone.conv1(input_tensor); x = backbone.bn1(x); x = backbone.relu(x)
                 x = backbone.maxpool(x); x = backbone.layer1(x); x = backbone.layer2(x)
                 x = backbone.layer3(x); x = backbone.layer4(x); x = backbone.avgpool(x)
                 return torch.flatten(x, 1)
+            
+            elif "swin" in backbone_name or "convnext" in backbone_name:
+                x = backbone.forward_features(input_tensor)
+                return x.mean(dim=1) if x.ndim == 3 else x  # handle [B, C, H, W] or [B, Tokens, D]
+            
             else:
                 raise ValueError(f"Unsupported backbone: {backbone_name}")
+
     def get_feature_dim(self, model, backbone_name):
         model.eval()
     
@@ -111,11 +128,11 @@ class ZeroCostCandidateGenerator:
         for i in range(self.num_candidates):
             backbone_name = random.choice(self.BACKBONE_NAMES)
 
-            # 🛠️ Patch: expand grayscale images to 3 channels for ViT
-            if "vit" in backbone_name and self.real_input.shape[1] == 1:
+            if any(name in backbone_name for name in ["vit", "swin", "convnext"]) and self.real_input.shape[1] == 1:
                 input_tensor = self.real_input.repeat(1, 3, 1, 1)
             else:
                 input_tensor = self.real_input
+
 
             backbone = self.backbones[backbone_name]
             feat_dim = self.get_feature_dim(backbone, backbone_name)

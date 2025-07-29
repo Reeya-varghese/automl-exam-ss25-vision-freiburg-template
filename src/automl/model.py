@@ -58,12 +58,21 @@ def load_vit(grayscale=False):
     
     return model
 
+def load_swin(grayscale=False):
+        model = timm.create_model('swin_tiny_patch4_window7_224', pretrained=True)
+        return model
+
+def load_convnext(grayscale=False):
+        model = timm.create_model('convnext_tiny', pretrained=True)
+        return model
 
 def get_backbone_loader(backbone_name):
     loaders = {
         "resnet18": load_resnet18,
         "efficientnet_b0": load_efficientnet_b0,
-        "vit_base_patch16_224": load_vit
+        "vit_base_patch16_224": load_vit,
+        "swin_tiny_patch4_window7_224": load_swin,
+        "convnext_tiny": load_convnext,
     }
     assert backbone_name in loaders, f"Unsupported backbone: {backbone_name}"
     return loaders[backbone_name]
@@ -78,15 +87,18 @@ def get_model(backbone_name, num_classes, grayscale=False, custom_head=None):
     elif "efficientnet" in backbone_name:
         features_dim = backbone.classifier.in_features
         backbone.classifier = nn.Identity()
-    elif "vit" in backbone_name:
-        if "vit" in backbone_name and grayscale:
-            print("⚠️ Warning: Grayscale dataset with ViT — assuming transforms handle channel expansion.")
-        backbone.head = nn.Identity()
-        features_dim = 768
-        if features_dim is None:
-            raise ValueError("Unable to extract ViT feature dimension")
-    else:
-        raise ValueError(f"Unsupported backbone: {backbone_name}")
+    elif "vit" in backbone_name or "swin" in backbone_name or "convnext" in backbone_name:
+        if grayscale:
+            print(f"⚠️ Warning: Grayscale dataset with transformer model ({backbone_name}) — assuming channel expansion in transforms.")
+        if hasattr(backbone, 'head'):
+            features_dim = backbone.head.in_features
+            backbone.head = nn.Identity()
+        elif hasattr(backbone, 'classifier'):
+            features_dim = backbone.classifier.in_features
+            backbone.classifier = nn.Identity()
+        else:
+            raise ValueError(f"Could not extract feature dim from backbone: {backbone_name}")
+
 
     if custom_head is None:
         head = nn.Sequential(
