@@ -30,7 +30,6 @@ def get_transforms(mean, std, phase="train", backbone_name="resnet18"):
 
 
 
-
 def load_resnet18(grayscale=False):
     model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
     if grayscale:

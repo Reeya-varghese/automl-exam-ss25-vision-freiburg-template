@@ -7,7 +7,7 @@ import torch
 import numpy as np
 from torch.utils.data import DataLoader
 from sklearn.metrics import accuracy_score, f1_score
-from codecarbon import EmissionsTracker
+
 from Zero_cost import ZeroCostCandidateGenerator
 from training import AutoML
 import optuna
