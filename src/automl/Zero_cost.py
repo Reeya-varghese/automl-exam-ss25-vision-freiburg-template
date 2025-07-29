@@ -110,17 +110,12 @@ class ZeroCostCandidateGenerator:
                 raise ValueError(f"Unsupported backbone: {backbone_name}")
 
     def get_feature_dim(self, model, backbone_name):
-        model.eval()
-    
-        if "vit" in backbone_name:
-            dummy_input = torch.randn(1, 3, 224, 224).to(self.device)
-            feats = self.extract_features(model, backbone_name, dummy_input)
-            return feats.shape[-1]
+        input_tensor = self.real_input
+        if any(k in backbone_name for k in ["vit", "swin", "convnext"]) and input_tensor.shape[1] == 1:
+            input_tensor = input_tensor.repeat(1, 3, 1, 1)
+        feats = self.extract_features(model, backbone_name, input_tensor)
+        return feats.shape[1]
 
-        input_channels = self.real_input.shape[1]
-        dummy_input = torch.randn(1, input_channels, 224, 224).to(self.device)
-        feats = self.extract_features(model, backbone_name, dummy_input)
-        return feats.shape[-1]
     
     def get_top_k_candidates(self):
         candidates = []
