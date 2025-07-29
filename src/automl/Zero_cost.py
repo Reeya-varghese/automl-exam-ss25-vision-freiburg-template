@@ -115,8 +115,11 @@ class ZeroCostCandidateGenerator:
         input_tensor = self.real_input
         if any(k in backbone_name for k in ["vit", "swin", "convnext"]) and input_tensor.shape[1] == 1:
             input_tensor = input_tensor.repeat(1, 3, 1, 1)
+    
         feats = self.extract_features(model, backbone_name, input_tensor)
+        assert feats is not None, f"Feature extraction failed for {backbone_name}"
         return feats.shape[1]
+
 
     
     def get_top_k_candidates(self):
@@ -156,4 +159,6 @@ class ZeroCostCandidateGenerator:
             c["combined_score"] = 0.5 * jac_norm[i] + 0.5 * grad_norm[i]
 
         ranked = sorted(candidates, key=lambda x: x["combined_score"], reverse=True)
+        print(f"🎯 Backbone: {backbone_name}, feat_dim: {feat_dim}, feats.shape: {feats.shape}")
+
         return ranked[:self.top_k]
