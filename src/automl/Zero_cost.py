@@ -90,7 +90,7 @@ class ZeroCostCandidateGenerator:
 
                 else:
                     features = features.mean(dim=1)  # fallback if [CLS] doesn't exist
-                    return features
+                return features
             
             elif "efficientnet" in backbone_name:
                 x = backbone.forward_features(input_tensor)
