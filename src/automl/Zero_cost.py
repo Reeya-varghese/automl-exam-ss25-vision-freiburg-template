@@ -78,7 +78,6 @@ class ZeroCostCandidateGenerator:
     def normalize(self, score_list):
         min_val, max_val = min(score_list), max(score_list)
         return [(s - min_val) / (max_val - min_val + 1e-8) for s in score_list]
-
     
     def extract_features(self, backbone, backbone_name, input_tensor):
         with torch.no_grad():
@@ -145,7 +144,7 @@ class ZeroCostCandidateGenerator:
 
             jac = self.get_jacobian_score(head, feats)
             grad = self.get_gradnorm_score(head, feats, self.real_target)
-
+            
             candidates.append({
                 "backbone": backbone_name,
                 "head": deepcopy(head),
@@ -158,7 +157,7 @@ class ZeroCostCandidateGenerator:
         jac_norm = self.normalize([c["jacobian_score"] for c in candidates])
         grad_norm = self.normalize([c["gradnorm_score"] for c in candidates])
         for i, c in enumerate(candidates):
-            c["combined_score"] = 0.5 * jac_norm[i] + 0.5 * grad_norm[i]
+            c["combined_score"] = jac_norm[i] +  grad_norm[i]
 
         ranked = sorted(candidates, key=lambda x: x["combined_score"], reverse=True)
         return ranked[:self.top_k] 

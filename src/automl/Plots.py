@@ -27,7 +27,7 @@ def show_class_distribution_cli(dataset, class_names=None, title="Class Distribu
     plt.tight_layout()
 
     # ✅ Ensure "plots/" directory exists
-    output_dir = Path("plots")
+    output_dir = Path("./Plots")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # ✅ Save the plot
@@ -37,6 +37,31 @@ def show_class_distribution_cli(dataset, class_names=None, title="Class Distribu
     print(f"📈 Plot saved to: {plot_filename}")
 
 
+
+def save_carbon_gpu_plots(study, filename_prefix="optuna"):
+    trials = [t for t in study.trials if t.values is not None]
+
+    emissions = [t.values[3] for t in trials]
+    gpu = [t.values[2] for t in trials]
+    trial_nums = [t.number for t in trials]
+
+    # Carbon plot
+    plt.figure()
+    plt.bar(trial_nums, emissions, color='green')
+    plt.xlabel("Trial")
+    plt.ylabel("CO₂ Emissions (kg)")
+    plt.title("CO₂ Emissions per Trial")
+    plt.tight_layout()
+    plt.savefig(f"{filename_prefix}_carbon.png")
+
+    # GPU plot
+    plt.figure()
+    plt.bar(trial_nums, gpu, color='blue')
+    plt.xlabel("Trial")
+    plt.ylabel("Peak GPU Memory (GB)")
+    plt.title("Peak GPU Memory per Trial")
+    plt.tight_layout()
+    plt.savefig(f"{filename_prefix}_gpu.png")
 
 
 def save_optuna_visualizations(study, prefix=""):

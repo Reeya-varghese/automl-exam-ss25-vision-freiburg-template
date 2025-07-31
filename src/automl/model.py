@@ -8,7 +8,7 @@ def get_device():
     return 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def get_transforms(mean, std, phase="train", backbone_name="resnet18"):
-    is_vit = "vit" in backbone_name.lower()
+    is_transformer = any(k in backbone_name.lower() for k in ["vit", "swin", "convnext"])
 
     tf = [transforms.Resize((224, 224))]
 
@@ -20,7 +20,7 @@ def get_transforms(mean, std, phase="train", backbone_name="resnet18"):
 
     tf.append(transforms.ToTensor())  # convert PIL to tensor first
 
-    if is_vit:
+    if is_transformer:
         # Now it's a tensor, so .repeat works
         tf.append(transforms.Lambda(lambda x: x.repeat(3, 1, 1) if x.shape[0] == 1 else x))
 
@@ -98,7 +98,7 @@ def get_model(backbone_name, num_classes, grayscale=False, custom_head=None):
     elif "swin" in backbone_name or "convnext" in backbone_name:
         # Use dummy forward pass
         device = get_device()
-        dummy_input = torch.randn(1, 1 if grayscale else 3, 224, 224).to(device)
+        dummy_input = torch.randn(1, 3, 224, 224).to(device)
         backbone.eval()
         with torch.no_grad():
             dummy_output = backbone(dummy_input)
