@@ -115,19 +115,18 @@ def get_progressive_config(trial_number, total_trials, enable_progressive=True):
 def get_enhanced_reference_points():
     """Enhanced reference points for 5-objective optimization with carbon focus"""
     return np.array([
-        # Performance-focused solutions
-        [1, 0, 0, 0],           # Pure accuracy
-        [0, 1, 0, 0],           # Pure F1
-        [0.7, 0.3, 0, 0],       # Balanced performance
+       [1, 0, 0, 0, 0],           # Pure accuracy
+        [0, 1, 0, 0, 0],           # Pure F1
+        [0.7, 0.3, 0, 0, 0],       # Balanced performance
         
         # Efficiency-focused solutions  
-        [0, 0, 1, 0],           # Pure speed
-        [0, 0, 0, 1],           # Pure carbon efficiency
-        [0.7, 0.1, 0.1, 0.1],           # Pure GPU efficiency
+        [0, 0, 1, 0, 0],           # Pure speed
+        [0, 0, 0, 1, 0],           # Pure carbon efficiency
+        [0, 0, 0, 0, 1],           # Pure GPU efficiency
         
         # Balanced sustainability solutions
-        [0.4, 0.4, 0.1, 0.1],  # Performance + minimal sustainability
-        [0.3, 0.3, 0.2, 0.2],    # Balanced all objectives
-        [0.3, 0.2, 0.25, 0.25],  # Sustainability-focused
-        [0.2, 0.1, 0.35, 0.35],  # Green AI focused
+        [0.4, 0.4, 0.1, 0.05, 0.05],  # Performance + minimal sustainability
+        [0.3, 0.3, 0.2, 0.1, 0.1],    # Balanced all objectives
+        [0.2, 0.2, 0.15, 0.25, 0.2],  # Sustainability-focused
+        [0.1, 0.1, 0.1, 0.35, 0.35],  # Green AI focused
     ])

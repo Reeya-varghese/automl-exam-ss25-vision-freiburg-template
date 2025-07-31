@@ -33,6 +33,7 @@ from utils import calculate_mean_std
 from vision_datasets import FashionDataset, FlowersDataset, EmotionsDataset, SkinCancerDataset
 from torch.utils.data import random_split
 # ---------------------------------------------
+logging.getLogger("codecarbon").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
 def optuna_objective(
@@ -61,18 +62,13 @@ def optuna_objective(
         # progressive_config = get_progressive_config(trial.number, trial.study.n_trials, enable_progressive)
         progressive_config = get_progressive_config(trial.number, total_trials, enable_progressive)
         
-        # NEW: Dynamic batch size and epochs based on progressive strategy
-        if progressive_config['prefer_efficient_arch']:
-            # Bias toward efficient architectures in early trials
-            efficient_candidates = [cid for cid, (backbone, _) in candidate_lookup.items() 
-                                  if get_architecture_efficiency_weight(backbone) >= 0.8]
-            if efficient_candidates:
-                candidate_id = trial.suggest_categorical("candidate_id", efficient_candidates)
-            else:
-                candidate_id = trial.suggest_categorical("candidate_id", list(candidate_lookup.keys()))
-        else:
-            candidate_id = trial.suggest_categorical("candidate_id", list(candidate_lookup.keys()))
-        
+        candidate_id = trial.suggest_categorical("candidate_id", list(candidate_lookup.keys()))
+        backbone, head = candidate_lookup[candidate_id]
+        efficiency_weight = get_architecture_efficiency_weight(backbone)
+
+        if progressive_config['prefer_efficient_arch'] and efficiency_weight < 0.8:
+            raise optuna.TrialPruned(f"Skipping inefficient model {backbone} in early trials")
+
         # NEW: Dynamic resource optimization
         epochs = trial.suggest_int('epochs', 4, progressive_config['max_epochs'])
         batch_size_options = [16, 32, 64] if progressive_config['min_batch_size'] <= 16 else [32, 64]
@@ -138,6 +134,7 @@ def optuna_objective(
         acc, 
         f1, 
         training_time,
+        adjusted_carbon,
         sustainability_metrics['peak_gpu_memory_gb']
         )
 
@@ -224,7 +221,7 @@ if __name__ == "__main__":
    
 
     study = optuna.create_study(
-        directions=["maximize", "maximize", "minimize","minimize"],
+        directions=["maximize", "maximize", "minimize","minimize", "minimize"],
         sampler=opsampler,
         
     )
@@ -247,9 +244,9 @@ if __name__ == "__main__":
         efficiency = t.user_attrs.get('efficiency_weight', 1.0)
         actual_carbon = t.user_attrs.get('emissions_kg', t.values[3])
         print(f"✅ Acc: {t.values[0]:.4f}, F1: {t.values[1]:.4f}, Time: {t.values[2]:.2f}s, "
-              f"Carbon: {actual_carbon:.4f}kg (adj: {t.values[3]:.4f}), GPU: {t.values[4]:.2f}GB, "
-              f"Eff: {efficiency:.1f} | {t.params}")
-
+            f"Carbon: {actual_carbon:.4f}kg (adj: {t.values[3]:.4f}), "
+            f"GPU: {t.values[4]:.2f}GB, "
+            f"Eff: {efficiency:.1f} | {t.params}")
      # NEW: Enhanced solution analysis
     print(f"\n🎯 SOLUTION ANALYSIS:")
     print("="*60)
