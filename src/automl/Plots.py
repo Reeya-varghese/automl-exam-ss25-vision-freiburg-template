@@ -3,12 +3,8 @@ import matplotlib.pyplot as plt
 from collections import Counter
 from pathlib import Path
 import optuna
-import matplotlib.pyplot as plt
 
 def show_class_distribution_cli(dataset, class_names=None, title="Class Distribution"):
-    """
-    Displays class distribution bar chart in CLI.
-    """
     labels = [label for _, label in dataset]
     class_counts = Counter(labels)
 
@@ -29,11 +25,17 @@ def show_class_distribution_cli(dataset, class_names=None, title="Class Distribu
     plt.title(title)
     plt.xticks(rotation=45)
     plt.tight_layout()
-    plt.savefig(f"plots/{title.replace(' ', '_').lower()}.png")
-    print(f"📈 Saved plot to plots/{title.replace(' ', '_').lower()}.png")
-    plt.close()
 
-    return class_counts
+    # ✅ Ensure "plots/" directory exists
+    output_dir = Path("plots")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # ✅ Save the plot
+    plot_filename = output_dir / f"{title.replace(' ', '_').lower()}.png"
+    plt.savefig(plot_filename)
+    plt.close()
+    print(f"📈 Plot saved to: {plot_filename}")
+
 
 
 
