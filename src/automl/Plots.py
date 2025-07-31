@@ -29,7 +29,9 @@ def show_class_distribution_cli(dataset, class_names=None, title="Class Distribu
     plt.title(title)
     plt.xticks(rotation=45)
     plt.tight_layout()
-    plt.show()
+    plt.savefig(f"plots/{title.replace(' ', '_').lower()}.png")
+    print(f"📈 Saved plot to plots/{title.replace(' ', '_').lower()}.png")
+    plt.close()
 
     return class_counts
 

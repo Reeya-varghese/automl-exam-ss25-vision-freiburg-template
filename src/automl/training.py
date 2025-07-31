@@ -11,6 +11,7 @@ import optuna
 from model import get_model, get_transforms
 from utils import calculate_mean_std
 from torch.utils.data import Subset, random_split
+from RandAug import prepare_fully_oversampled_dataset
 # ---------------------------------------------
 logger = logging.getLogger(__name__)
 
@@ -61,18 +62,41 @@ class AutoML:
 
     def fit(self, dataset_class: Any, subsample: int = None, trial: optuna.trial.Trial = None) -> "AutoML":
       
-
         mean, std = calculate_mean_std(dataset_class)
-        self._transform = get_transforms(mean, std, phase="train", backbone_name=self.backbone)
-       
+        self.mean, self.std = mean, std  # Save for predict usage
 
-       
-        dataset = dataset_class(
+#        Load raw dataset without transforms
+        raw_dataset = dataset_class(
+            root="./data",
+            split='train',
+            download=True,
+            transform=None
+        )
+
+        # If augmentation is enabled, use RandAug-based oversampling
+        if self.use_augmentation:
+            n = trial.suggest_int("randaug_n", 1, 3) if trial else 2
+            m = trial.suggest_int("randaug_m", 5, 15) if trial else 9
+
+            dataset, _ = prepare_fully_oversampled_dataset(
+                dataset=raw_dataset,
+                image_size=(224, 224),
+                grayscale=(dataset_class.channels == 1),
+                n=n,
+                m=m,
+                mean=mean,
+                std=std
+            )
+        else:
+            # Fallback to basic transform
+            self._transform = get_transforms(mean, std, phase="train", backbone_name=self.backbone)
+            dataset = dataset_class(
             root="./data",
             split='train',
             download=True,
             transform=self._transform
         )
+
         if subsample is not None:
             indices = np.random.choice(len(dataset), subsample, replace=False)
             dataset = Subset(dataset, indices)
@@ -165,6 +189,8 @@ class AutoML:
 
         if trial:
             trial.set_user_attr("history", self._history)
+            trial.set_user_attr("randaug_n", n)
+            trial.set_user_attr("randaug_m", m)
 
         return self
 

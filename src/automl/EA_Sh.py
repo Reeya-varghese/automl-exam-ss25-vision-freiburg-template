@@ -161,7 +161,7 @@ if __name__ == "__main__":
    
 
     study = optuna.create_study(
-        directions=["maximize", "maximize", "minimize", "minimize"],
+        directions=["maximize", "maximize", "minimize"],
         sampler=sampler,
         
     )
