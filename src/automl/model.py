@@ -80,23 +80,32 @@ def get_backbone_loader(backbone_name):
 def get_model(backbone_name, num_classes, grayscale=False, custom_head=None):
     backbone = get_backbone_loader(backbone_name)(grayscale=grayscale)
 
+    # Determine feature dimension based on backbone type
     if backbone_name.startswith("resnet"):
         features_dim = backbone.fc.in_features
         backbone.fc = nn.Identity()
+
     elif "efficientnet" in backbone_name:
         features_dim = backbone.classifier.in_features
         backbone.classifier = nn.Identity()
-    elif "vit" in backbone_name or "swin" in backbone_name or "convnext" in backbone_name:
+
+    elif "vit" in backbone_name:
         if grayscale:
-            print(f"⚠️ Warning: Grayscale dataset with transformer model ({backbone_name}) — assuming channel expansion in transforms.")
-        if hasattr(backbone, 'head'):
-            features_dim = backbone.head.in_features
-            backbone.head = nn.Identity()
-        elif hasattr(backbone, 'classifier'):
-            features_dim = backbone.classifier.in_features
-            backbone.classifier = nn.Identity()
-        else:
-            raise ValueError(f"Could not extract feature dim from backbone: {backbone_name}")
+            print(f"⚠️ Grayscale + ViT: input will be repeated to 3 channels")
+        features_dim = backbone.head.in_features
+        backbone.head = nn.Identity()
+
+    elif "swin" in backbone_name or "convnext" in backbone_name:
+        # Use dummy forward pass
+        device = get_device()
+        dummy_input = torch.randn(1, 1 if grayscale else 3, 224, 224).to(device)
+        backbone.eval()
+        with torch.no_grad():
+            dummy_output = backbone(dummy_input)
+            features_dim = dummy_output.view(1, -1).shape[1]
+
+    else:
+        raise ValueError(f"Unsupported or unknown backbone: {backbone_name}")
 
 
     if custom_head is None:
