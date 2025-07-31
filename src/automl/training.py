@@ -97,17 +97,37 @@ class AutoML:
             transform=self._transform
         )
 
+        # Apply same transform before splitting
         if subsample is not None:
             indices = np.random.choice(len(dataset), subsample, replace=False)
             dataset = Subset(dataset, indices)
-        train_len = int(0.8 * len(dataset))
-        val_len = len(dataset) - train_len
-        train_set, val_set = random_split(dataset, [train_len, val_len], generator=torch.Generator().manual_seed(self.seed))
+
+# Manual split
+        total_indices = list(range(len(dataset)))
+        np.random.seed(self.seed)
+        np.random.shuffle(total_indices)
+        split = int(0.8 * len(dataset))
+        train_indices = total_indices[:split]
+        val_indices = total_indices[split:]
+
+# Split raw dataset before augmentation
+        train_raw = Subset(raw_dataset, train_indices)
+        val_set = Subset(dataset, val_indices)
         self._val_set = val_set
-        if self.use_augmentation:
-            train_loader = DataLoader(train_set, batch_size=self.batch_size, sampler=sampler)
-        else:
-            train_loader = DataLoader(train_set, batch_size=self.batch_size, shuffle=True)
+
+# Augment only training split
+        train_augmented, sampler = prepare_augmented_balanced_dataset(
+            dataset=train_raw,
+            image_size=(224, 224),
+            grayscale=(dataset_class.channels == 1),
+            n=n,
+            m=m,
+            mean=mean,
+            std=std
+        )
+
+        train_loader = DataLoader(train_augmented, batch_size=self.batch_size, sampler=sampler)
+
         val_loader = DataLoader(val_set, batch_size=self.batch_size, shuffle=False)
 
         model = get_model(

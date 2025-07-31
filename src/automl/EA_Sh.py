@@ -123,16 +123,6 @@ if __name__ == "__main__":
         std=std
     )
 
-# Visualize balanced distribution via simulated sampling
-
-    Sample = namedtuple("Sample", ["data", "label"])
-    sampled_labels = []
-    for idx in list(sampler)[:1000]:
-        _, label = augmented_dataset[idx]
-        sampled_labels.append(label)
-    visual_dataset = [Sample(None, l) for l in sampled_labels]
-    show_class_distribution_cli(visual_dataset, class_names, title="After RandAug + Weighted Sampling")
-
 # Get sample batch for ZC proxy
     sample_loader = DataLoader(augmented_dataset, sampler=sampler, batch_size=8)
     real_input, real_target = next(iter(sample_loader))
