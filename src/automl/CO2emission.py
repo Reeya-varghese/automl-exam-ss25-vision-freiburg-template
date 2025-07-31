@@ -2,7 +2,7 @@ import torch
 import time
 import threading
 from codecarbon import EmissionsTracker
-
+import numpy as np
 class CarbonGPUTracker:
     """Smart carbon emissions and GPU tracking"""
     
