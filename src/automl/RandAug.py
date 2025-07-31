@@ -150,6 +150,7 @@ def prepare_fully_oversampled_dataset(
     class_counts = compute_class_distribution(dataset)
     max_count = max(class_counts.values())
 
+
     normalize = transforms.Normalize(mean, std)
 
     base_aug = transforms.Compose([
@@ -169,3 +170,58 @@ def prepare_fully_oversampled_dataset(
 
     oversampled_data = oversample_with_randaugment(dataset, class_counts, max_count, randaug, base_aug)
     return AugmentedOversampledDataset(oversampled_data), class_counts
+
+class AugmentedMinorityDataset(Dataset):
+    def __init__(self, dataset, class_counts, minority_threshold, base_aug, randaug):
+        self.dataset = dataset
+        self.class_counts = class_counts
+        self.minority_threshold = minority_threshold
+        self.base_aug = base_aug
+        self.randaug = randaug
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, idx):
+        img, label = self.dataset[idx]
+        if self.class_counts[label] < self.minority_threshold:
+            img = self.randaug(img)
+        else:
+            img = self.base_aug(img)
+        return img, label
+
+def get_weighted_sampler(dataset, class_counts):
+    targets = [label for _, label in dataset]
+    weights = [1.0 / class_counts[t] for t in targets]
+    return WeightedRandomSampler(weights, num_samples=len(weights), replacement=True)
+
+def prepare_augmented_balanced_dataset(
+    dataset, image_size=(224, 224), grayscale=False, minority_threshold=None, n=2, m=9, mean=(0.5,), std=(0.5,)
+):
+    class_counts = compute_class_distribution(dataset)
+
+    if minority_threshold is None:
+        sorted_counts = sorted(class_counts.values(), reverse=True)
+        minority_threshold = sorted_counts[1] if len(sorted_counts) > 1 else sorted_counts[0]
+
+    normalize = transforms.Normalize(mean, std)
+
+    base_aug = transforms.Compose([
+        transforms.Resize(image_size),
+        transforms.RandomHorizontalFlip(0.5),
+        transforms.ToTensor(),
+        normalize
+    ])
+
+    randaug = transforms.Compose([
+        transforms.Resize(image_size),
+        RandAugmentFixed(n=n, m=m),
+        transforms.RandomHorizontalFlip(0.5),
+        transforms.ToTensor(),
+        normalize
+    ])
+
+    dataset_aug = AugmentedMinorityDataset(dataset, class_counts, minority_threshold, base_aug, randaug)
+    sampler = get_weighted_sampler(dataset_aug, class_counts)
+
+    return dataset_aug, sampler

@@ -11,7 +11,7 @@ import optuna
 from model import get_model, get_transforms
 from utils import calculate_mean_std
 from torch.utils.data import Subset, random_split
-from RandAug import prepare_fully_oversampled_dataset
+from RandAug import prepare_augmented_balanced_dataset
 # ---------------------------------------------
 logger = logging.getLogger(__name__)
 
@@ -73,12 +73,11 @@ class AutoML:
             transform=None
         )
 
-        # If augmentation is enabled, use RandAug-based oversampling
         if self.use_augmentation:
             n = trial.suggest_int("randaug_n", 1, 3) if trial else 2
             m = trial.suggest_int("randaug_m", 5, 15) if trial else 9
 
-            dataset, _ = prepare_fully_oversampled_dataset(
+            dataset, sampler = prepare_augmented_balanced_dataset(
                 dataset=raw_dataset,
                 image_size=(224, 224),
                 grayscale=(dataset_class.channels == 1),
@@ -87,6 +86,7 @@ class AutoML:
                 mean=mean,
                 std=std
             )
+
         else:
             # Fallback to basic transform
             self._transform = get_transforms(mean, std, phase="train", backbone_name=self.backbone)
@@ -104,7 +104,10 @@ class AutoML:
         val_len = len(dataset) - train_len
         train_set, val_set = random_split(dataset, [train_len, val_len], generator=torch.Generator().manual_seed(self.seed))
         self._val_set = val_set
-        train_loader = DataLoader(train_set, batch_size=self.batch_size, shuffle=True)
+        if self.use_augmentation:
+            train_loader = DataLoader(train_set, batch_size=self.batch_size, sampler=sampler)
+        else:
+            train_loader = DataLoader(train_set, batch_size=self.batch_size, shuffle=True)
         val_loader = DataLoader(val_set, batch_size=self.batch_size, shuffle=False)
 
         model = get_model(

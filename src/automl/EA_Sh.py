@@ -8,7 +8,9 @@ import numpy as np
 from torch.utils.data import DataLoader
 from sklearn.metrics import accuracy_score, f1_score
 from Plots import show_class_distribution_cli
-from RandAug import prepare_fully_oversampled_dataset, compute_class_distribution
+from collections import namedtuple
+from RandAug import prepare_augmented_balanced_dataset, compute_class_distribution
+
 from Zero_cost import ZeroCostCandidateGenerator
 from training import AutoML
 import optuna
@@ -110,8 +112,8 @@ if __name__ == "__main__":
     class_names = raw_dataset.classes if hasattr(raw_dataset, "classes") else None
     show_class_distribution_cli(raw_dataset, class_names, title="Before Augmentation")
 
-# Apply augmentation-based full oversampling
-    full_dataset, balanced_counts = prepare_fully_oversampled_dataset(
+# Prepare dataset with on-the-fly RandAug for minority classes
+    augmented_dataset, sampler = prepare_augmented_balanced_dataset(
         dataset=raw_dataset,
         image_size=(224, 224),
         grayscale=(dataset_class.channels == 1),
@@ -121,15 +123,20 @@ if __name__ == "__main__":
         std=std
     )
 
-# Show new class distribution
-    show_class_distribution_cli(full_dataset, class_names, title="After Augmentation-Based Oversampling")
+# Visualize balanced distribution via simulated sampling
 
-    train_len = int(0.8 * len(full_dataset))
-    val_len = len(full_dataset) - train_len
-    train_set, _ = random_split(full_dataset, [train_len, val_len], generator=torch.Generator().manual_seed(args.seed))
+    Sample = namedtuple("Sample", ["data", "label"])
+    sampled_labels = []
+    for idx in list(sampler)[:1000]:
+        _, label = augmented_dataset[idx]
+        sampled_labels.append(label)
+    visual_dataset = [Sample(None, l) for l in sampled_labels]
+    show_class_distribution_cli(visual_dataset, class_names, title="After RandAug + Weighted Sampling")
 
-    sample_loader = DataLoader(train_set, batch_size=8, shuffle=True)
+# Get sample batch for ZC proxy
+    sample_loader = DataLoader(augmented_dataset, sampler=sampler, batch_size=8)
     real_input, real_target = next(iter(sample_loader))
+
 
     # Run Zero-Cost Proxy search
     zcc = ZeroCostCandidateGenerator(real_input, real_target, num_candidates=100, top_k=10, num_classes=dataset_class.num_classes)
@@ -150,7 +157,7 @@ if __name__ == "__main__":
     ])
 
     # GA + SH Hyperparameter Optimization
-    sampler = NSGAIIISampler(
+    opsampler = NSGAIIISampler(
         population_size=40,
         mutation_prob=0.2,
         crossover_prob=0.9,
@@ -162,7 +169,7 @@ if __name__ == "__main__":
 
     study = optuna.create_study(
         directions=["maximize", "maximize", "minimize"],
-        sampler=sampler,
+        sampler=opsampler,
         
     )
     study.optimize(lambda trial: optuna_objective(
