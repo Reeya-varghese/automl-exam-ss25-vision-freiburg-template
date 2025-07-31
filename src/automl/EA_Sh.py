@@ -34,9 +34,32 @@ from vision_datasets import FashionDataset, FlowersDataset, EmotionsDataset, Ski
 from torch.utils.data import random_split
 import warnings
 warnings.filterwarnings("ignore")
+import sys
+import os
+import logging
+from contextlib import contextmanager
 
+@contextmanager
+def suppress_stdout():
+    with open(os.devnull, 'w') as devnull:
+        old_stdout = sys.stdout
+        sys.stdout = devnull
+        try:
+            yield
+        finally:
+            sys.stdout = old_stdout
+
+# Use it like this:
+with suppress_stdout():
+    from codecarbon import EmissionsTracker
+    logging.getLogger("codecarbon").setLevel(logging.CRITICAL)
+    tracker = EmissionsTracker()
+    tracker.start()
 # ---------------------------------------------
-logging.getLogger("codecarbon").setLevel(logging.ERROR)
+
+logging.getLogger("codecarbon").handlers.clear()
+logging.getLogger("codecarbon").propagate = False
+logging.getLogger("codecarbon").setLevel(logging.CRITICAL)
 logger = logging.getLogger(__name__)
 
 def optuna_objective(
@@ -69,7 +92,7 @@ def optuna_objective(
         backbone, head = candidate_lookup[candidate_id]
         efficiency_weight = get_architecture_efficiency_weight(backbone)
 
-        if progressive_config['prefer_efficient_arch'] and efficiency_weight < 0.8:
+        if progressive_config['prefer_efficient_arch'] and efficiency_weight < 0.6:
             raise optuna.TrialPruned(f"Skipping inefficient model {backbone} in early trials")
 
         # NEW: Dynamic resource optimization

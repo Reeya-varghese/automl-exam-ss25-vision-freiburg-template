@@ -73,9 +73,10 @@ def get_architecture_efficiency_weight(backbone_name):
     """Efficiency weights based on parameter count and energy research"""
     efficiency_weights = {
         'resnet18': 1.0,        # Most efficient (11M params)
-        'efficientnet_b0': 0.8, # Good efficiency (5M params, but complex ops)
-        'resnet50': 0.6,        # Moderate efficiency (25M params)
-        'vit_base_patch16_224': 0.4  # Least efficient (86M params, attention heavy)
+        'efficientnet_b0': 0.9, # Good efficiency (5M params, but complex ops)
+        'convnext_tiny': 0.8,   # Slightly less efficient (29M params)
+        'swin_tiny_patch4_window7_224': 0.7, # Moderate efficiency (29M params, complex ops)
+        'vit_base_patch16_224': 0.6, # Low efficiency (86M params, complex ops)
     }
     return efficiency_weights.get(backbone_name, 0.5)
 
