@@ -32,6 +32,9 @@ from model import get_transforms
 from utils import calculate_mean_std
 from vision_datasets import FashionDataset, FlowersDataset, EmotionsDataset, SkinCancerDataset
 from torch.utils.data import random_split
+import warnings
+warnings.filterwarnings("ignore")
+
 # ---------------------------------------------
 logging.getLogger("codecarbon").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
