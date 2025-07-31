@@ -88,7 +88,9 @@ def optuna_objective(
         # progressive_config = get_progressive_config(trial.number, trial.study.n_trials, enable_progressive)
         progressive_config = get_progressive_config(trial.number, total_trials, enable_progressive)
         
-        candidate_id = trial.suggest_categorical("candidate_id", list(candidate_lookup.keys()))
+        all_candidate_ids = list(candidate_lookup.keys())
+
+        candidate_id = trial.suggest_categorical("candidate_id", all_candidate_ids)
         backbone, head = candidate_lookup[candidate_id]
         efficiency_weight = get_architecture_efficiency_weight(backbone)
 
@@ -101,11 +103,10 @@ def optuna_objective(
         batch_size = trial.suggest_categorical('batch_size', batch_size_options)
         
         optimizer = trial.suggest_categorical('optimizer', ['adam', 'sgd'])
-        backbone, head = candidate_lookup[candidate_id]
+     
         use_augmentation = trial.suggest_categorical('use_augmentation', [True])
         
-        # NEW: Get architecture efficiency weight
-        efficiency_weight = get_architecture_efficiency_weight(backbone)
+      
         
         # Your existing AutoML training (unchanged)
         automl = AutoML(
@@ -140,7 +141,7 @@ def optuna_objective(
     except Exception as e:
         logger.error(f"Trial {trial.number} failed: {e}")
         tracker.stop_tracking()
-        return 0.0, 0.0, 999.0, 999.0, 999.0
+        raise optuna.TrialPruned(f"Failed due to error: {e}")
     
     sustainability_metrics = tracker.stop_tracking()
     efficiency_weight = get_architecture_efficiency_weight(backbone)
@@ -232,7 +233,7 @@ if __name__ == "__main__":
         print(f"[{i+1}] Backbone: {c['backbone']}, Combined Score: {c['combined_score']:.4f}")
     
     # Reference points for NSGAIII
-    reference_points = reference_points = get_enhanced_reference_points()
+    reference_points = get_enhanced_reference_points()
 
 
     # GA + SH Hyperparameter Optimization

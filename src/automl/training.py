@@ -192,7 +192,7 @@ class AutoML:
           
                 
             logger.info(f"Epoch {epoch + 1}, Loss: {epoch_loss:.4f}, Acc: {epoch_acc:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}")
-            print(f"Epoch {epoch + 1}, Loss: {epoch_loss:.4f}, Acc: {epoch_acc:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}")
+          
             if val_acc > best_val_acc:
                 best_val_acc = val_acc
                 best_model_state = deepcopy(model.state_dict())
