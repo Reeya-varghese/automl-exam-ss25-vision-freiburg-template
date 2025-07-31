@@ -7,12 +7,12 @@ import torch
 import numpy as np
 from torch.utils.data import DataLoader
 from sklearn.metrics import accuracy_score, f1_score
-
+from Plots import show_class_distribution_cli
+from RandAug import prepare_fully_oversampled_dataset, compute_class_distribution
 from Zero_cost import ZeroCostCandidateGenerator
 from training import AutoML
 import optuna
 from optuna.samplers import NSGAIIISampler
-
 from Plots import (
     save_optuna_visualizations,
     save_accuracy_histogram,
@@ -74,7 +74,7 @@ def optuna_objective(
     else:
         acc = 0
         f1 = 0
-    return acc, f1, training_time, em   
+    return acc, f1, training_time
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -103,10 +103,27 @@ if __name__ == "__main__":
     
     grayscale = dataset_class.channels == 1
     default_backbone = "resnet18" if grayscale else "vit_base_patch16_224"
-    transform = get_transforms(mean, std, phase="train", backbone_name=default_backbone)
+    # Load raw dataset without transforms
+    raw_dataset = dataset_class(root="./data", split='train', download=True, transform=None)
 
-    # Load and split dataset
-    full_dataset = dataset_class(root="./data", split='train', download=True, transform=transform)
+    # Compute and show original class distribution
+    class_names = raw_dataset.classes if hasattr(raw_dataset, "classes") else None
+    show_class_distribution_cli(raw_dataset, class_names, title="Before Augmentation")
+
+# Apply augmentation-based full oversampling
+    full_dataset, balanced_counts = prepare_fully_oversampled_dataset(
+        dataset=raw_dataset,
+        image_size=(224, 224),
+        grayscale=(dataset_class.channels == 1),
+        n=2,
+        m=9,
+        mean=mean,
+        std=std
+    )
+
+# Show new class distribution
+    show_class_distribution_cli(full_dataset, class_names, title="After Augmentation-Based Oversampling")
+
     train_len = int(0.8 * len(full_dataset))
     val_len = len(full_dataset) - train_len
     train_set, _ = random_split(full_dataset, [train_len, val_len], generator=torch.Generator().manual_seed(args.seed))

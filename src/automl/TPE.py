@@ -11,7 +11,7 @@ from sklearn.metrics import accuracy_score, f1_score
 from Zero_cost import ZeroCostCandidateGenerator
 from training import AutoML
 import optuna
-from optuna.pruners import HyperbandPruner
+
 from optuna.samplers import TPESampler
 
 from Plots import (
@@ -126,16 +126,16 @@ if __name__ == "__main__":
         print(f"[{i+1}] Backbone: {c['backbone']}, Combined Score: {c['combined_score']:.4f}")
     
     
-    # BOHB Hyperparameter Optimization
+    # TPE Hyperparameter Optimization
     sampler = TPESampler(
         seed=args.seed,
         multivariate=True)
-    pruner = HyperbandPruner()
+   
 
     study = optuna.create_study(
         directions=["maximize", "maximize", "minimize"],
         sampler=sampler,
-        pruner=pruner
+ 
     )
     study.optimize(lambda trial: optuna_objective(
         trial,

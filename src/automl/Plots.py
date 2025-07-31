@@ -1,7 +1,39 @@
 # utils/visualize.py
-
+import matplotlib.pyplot as plt
+from collections import Counter
+from pathlib import Path
 import optuna
 import matplotlib.pyplot as plt
+
+def show_class_distribution_cli(dataset, class_names=None, title="Class Distribution"):
+    """
+    Displays class distribution bar chart in CLI.
+    """
+    labels = [label for _, label in dataset]
+    class_counts = Counter(labels)
+
+    print(f"\n📊 {title}:")
+    for cls in sorted(class_counts.keys()):
+        name = class_names[cls] if class_names else str(cls)
+        print(f"   {name:<15}: {class_counts[cls]} samples")
+
+    # Plot
+    classes = list(class_counts.keys())
+    counts = [class_counts[c] for c in classes]
+    names = class_names if class_names else [str(c) for c in classes]
+
+    plt.figure(figsize=(8, 5))
+    plt.bar(names, counts, color='steelblue')
+    plt.xlabel("Class")
+    plt.ylabel("Sample Count")
+    plt.title(title)
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.show()
+
+    return class_counts
+
+
 
 def save_optuna_visualizations(study, prefix=""):
     try:
