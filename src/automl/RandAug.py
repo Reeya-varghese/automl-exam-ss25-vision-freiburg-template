@@ -132,7 +132,7 @@ def get_weighted_sampler(dataset, class_counts):
     return WeightedRandomSampler(weights, num_samples=len(weights), replacement=True)
 
 def prepare_augmented_balanced_dataset(
-    dataset, image_size=(224, 224), minority_threshold=None, n=2, m=9, mean=(0.5,), std=(0.5,), backbone_name="resnet18"
+    dataset, image_size=(224, 224), minority_threshold=None, n=2, m=9, mean=(0.5,), std=(0.5,), grayscle=False, backbone_name="resnet18"
 ):
     class_counts = compute_class_distribution(dataset)
 
