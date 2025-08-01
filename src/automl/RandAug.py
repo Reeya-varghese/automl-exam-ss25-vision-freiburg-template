@@ -4,7 +4,7 @@ from PIL import Image, ImageOps, ImageEnhance
 from torchvision import transforms
 from torch.utils.data import Dataset, WeightedRandomSampler
 from collections import Counter, defaultdict
-
+from torchvision.transforms import Lambda
 
 # =============================================================================
 # 🧩 RAND-AUGMENT (Fixed Version)
@@ -99,78 +99,6 @@ def compute_class_distribution(dataset):
     return Counter([label for _, label in dataset])
 
 
-
-# =============================================================================
-# 📈 STRATEGY 2: Full Oversampling with RandAug (Increases dataset size)
-# =============================================================================
-
-class AugmentedOversampledDataset(Dataset):
-    """
-    Dataset with actual duplicated and augmented samples to make all class sizes equal.
-    """
-    def __init__(self, data_tuples):
-        self.data = data_tuples
-
-    def __len__(self): return len(self.data)
-
-    def __getitem__(self, idx): return self.data[idx]
-
-
-def oversample_with_randaugment(dataset, class_counts, max_count, randaug, base_aug):
-    """
-    Create (img, label) list where each class is expanded to match max_count using augmentation.
-    """
-    class_to_indices = defaultdict(list)
-    for idx, (_, label) in enumerate(dataset):
-        class_to_indices[label].append(idx)
-
-    new_data = []
-
-    for label, indices in class_to_indices.items():
-        for idx in indices:
-            img, lbl = dataset[idx]
-            img = base_aug(img)
-            new_data.append((img, lbl))
-
-        for _ in range(max_count - len(indices)):
-            idx = random.choice(indices)
-            img, lbl = dataset[idx]
-            img = randaug(img)
-            new_data.append((img, lbl))
-
-    return new_data
-
-
-def prepare_fully_oversampled_dataset(
-    dataset, image_size=(224, 224), grayscale=False, n=2, m=9, mean=(0.5,), std=(0.5,)
-):
-    """
-    Returns a dataset with all classes having equal length (fully oversampled with RandAug).
-    """
-    class_counts = compute_class_distribution(dataset)
-    max_count = max(class_counts.values())
-
-
-    normalize = transforms.Normalize(mean, std)
-
-    base_aug = transforms.Compose([
-        transforms.Resize(image_size),
-        transforms.RandomHorizontalFlip(0.5),
-        transforms.ToTensor(),
-        normalize
-    ])
-
-    randaug = transforms.Compose([
-        transforms.Resize(image_size),
-        RandAugmentFixed(n=n, m=m),
-        transforms.RandomHorizontalFlip(0.5),
-        transforms.ToTensor(),
-        normalize
-    ])
-
-    oversampled_data = oversample_with_randaugment(dataset, class_counts, max_count, randaug, base_aug)
-    return AugmentedOversampledDataset(oversampled_data), class_counts
-
 class AugmentedMinorityDataset(Dataset):
     def __init__(self, dataset, class_counts, minority_threshold, base_aug, randaug):
         self.dataset = dataset
@@ -205,11 +133,13 @@ def prepare_augmented_balanced_dataset(
         minority_threshold = sorted_counts[1] if len(sorted_counts) > 1 else sorted_counts[0]
 
     normalize = transforms.Normalize(mean, std)
+    RGB_conv = Lambda(lambda x: x.repeat(3, 1, 1) if x.shape[0] == 1 else x)
 
     base_aug = transforms.Compose([
         transforms.Resize(image_size),
         transforms.RandomHorizontalFlip(0.5),
         transforms.ToTensor(),
+        RGB_conv,
         normalize
     ])
 
@@ -218,6 +148,7 @@ def prepare_augmented_balanced_dataset(
         RandAugmentFixed(n=n, m=m),
         transforms.RandomHorizontalFlip(0.5),
         transforms.ToTensor(),
+        RGB_conv,
         normalize
     ])
 
