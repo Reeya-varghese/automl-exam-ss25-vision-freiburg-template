@@ -71,7 +71,7 @@ def get_backbone_loader(backbone_name):
 def get_model(backbone_name, num_classes, grayscale=False, custom_head=None):
     device = get_device()
 
-    # Load the base backbone as RGB
+    # Always load pretrained RGB backbone
     base_backbone = get_backbone_loader(backbone_name)(grayscale=False).to(device)
 
     if grayscale:
@@ -80,42 +80,48 @@ def get_model(backbone_name, num_classes, grayscale=False, custom_head=None):
     else:
         adapter = nn.Identity()
 
-    # Extract features_dim
+    # Modify backbone and extract features_dim
     if backbone_name.startswith("resnet"):
-        features_dim = base_backbone.fc.in_features
         base_backbone.fc = nn.Identity()
-        backbone = base_backbone
+        backbone = nn.Sequential(
+            base_backbone,
+            nn.AdaptiveAvgPool2d((1, 1)),
+            nn.Flatten()
+        )
+        features_dim = base_backbone.fc.in_features  # was set to Identity above
 
     elif "efficientnet" in backbone_name:
-        features_dim = base_backbone.classifier.in_features
         base_backbone.classifier = nn.Identity()
-        backbone = base_backbone
+        backbone = nn.Sequential(
+            nn.Sequential(
+                nn.Lambda(lambda x: base_backbone.forward_features(x))
+            ),
+            nn.AdaptiveAvgPool2d((1, 1)),
+            nn.Flatten()
+        )
+        features_dim = base_backbone.classifier.in_features
 
     elif "vit" in backbone_name:
-        features_dim = base_backbone.head.in_features
         base_backbone.head = nn.Identity()
-        backbone = base_backbone
+        backbone = nn.Sequential(
+            nn.Lambda(lambda x: base_backbone.forward_features(x).mean(dim=1))  # [B, N, D] -> [B, D]
+        )
+        features_dim = base_backbone.head.in_features
 
     elif "swin" in backbone_name or "convnext" in backbone_name:
         features_dim = base_backbone.num_features
-
-        # ✅ wrap forward_features in a module
-        class Wrapper(nn.Module):
-            def __init__(self, model):
-                super().__init__()
-                self.model = model
-            def forward(self, x):
-                return self.model.forward_features(x)
-
-        backbone = Wrapper(base_backbone)
+        backbone = nn.Sequential(
+            nn.Lambda(lambda x: base_backbone.forward_features(x)),
+            nn.AdaptiveAvgPool2d((1, 1)),
+            nn.Flatten()
+        )
 
     else:
         raise ValueError(f"Unsupported backbone: {backbone_name}")
 
-    # Custom head
+    # Head definition
     if custom_head is None:
         head = nn.Sequential(
-            nn.Flatten(),
             nn.BatchNorm1d(features_dim),
             nn.Linear(features_dim, 2048),
             nn.ReLU(),
@@ -128,6 +134,8 @@ def get_model(backbone_name, num_classes, grayscale=False, custom_head=None):
     else:
         head = custom_head
 
-    # Assemble full model
+    # Full model
     model = nn.Sequential(adapter, backbone, head).to(device)
     return model
+
+    

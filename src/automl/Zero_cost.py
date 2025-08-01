@@ -18,6 +18,10 @@ def wrap_backbone(name, model):
                 return self.model.forward_features(x)
         return Wrapper(model)
     return model
+
+def has_adapter(model):
+    return any(isinstance(m, GrayscaleToRGBAdapter) for m in model.modules())
+
 class ZeroCostCandidateGenerator:
  
     
@@ -102,22 +106,25 @@ class ZeroCostCandidateGenerator:
 
         # Handle common output shapes
             if x.ndim == 4:  # e.g., [B, C, H, W]
-                return F.adaptive_avg_pool2d(x, 1).reshape(x.size(0), -1)
-            elif x.ndim == 3:  # e.g., ViT with [B, Tokens, D]
-                return x.mean(dim=1)
-            elif x.ndim == 2:  # already flattened features
-                return x
-            else:
+                x=F.adaptive_avg_pool2d(x, 1).reshape(x.size(0), -1)
+            elif x.ndim == 3:  # e.xg., ViT with [B, Tokens, D]
+               x= x.mean(dim=1)
+            elif x.ndim != 2:  # already flattened features
+            
                 raise ValueError(f"Unsupported feature shape from {backbone_name}: {x.shape}")
+            print(f"[DEBUG] Feature shape for {backbone_name}: {x.shape}")
 
-
+            return x
+   
     # ------------------ Feature Dimension Extraction ------------------ #
     def get_feature_dim(self, model, backbone_name):
         model.eval()
-        in_channels = 1 if self.rgb_adapter else 3
+        in_channels = 1 if self.real_input.shape[1] == 1 else 3
         dummy_input = torch.randn(1, in_channels, 224, 224).to(self.device)
-        if self.rgb_adapter:
+
+        if self.rgb_adapter and not has_adapter(model):
             dummy_input = self.rgb_adapter(dummy_input)
+
         feats = self.extract_features(model, backbone_name, dummy_input)
         return feats.shape[-1]
 
@@ -130,11 +137,13 @@ class ZeroCostCandidateGenerator:
             backbone_name = random.choice(self.BACKBONE_NAMES)
 
             input_tensor = self.real_input
-            if self.rgb_adapter:
+            if self.rgb_adapter and not has_adapter(backbone):
                 input_tensor = self.rgb_adapter(input_tensor)
 
 
             backbone = self.backbones[backbone_name]
+            print(f"[DEBUG] Using backbone: {backbone_name}")
+
             feat_dim = self.get_feature_dim(backbone, backbone_name)
 
             head = self.generate_random_head(feat_dim).to(self.device)
