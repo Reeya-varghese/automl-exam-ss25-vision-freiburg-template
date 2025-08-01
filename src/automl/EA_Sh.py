@@ -65,35 +65,32 @@ def optuna_objective(
             for i, c in enumerate(top_k_candidates)
         }
         lr = trial.suggest_float('lr', 1e-4, 1e-2, log=True)
-        
-        # NEW: Progressive configuration
-        # progressive_config = get_progressive_config(trial.number, trial.study.n_trials, enable_progressive)
-        progressive_config = get_progressive_config(trial.number, total_trials, enable_progressive)
-        
-        all_candidate_ids = list(candidate_lookup.keys())
 
+        progressive_config = get_progressive_config(trial.number, total_trials, enable_progressive)
+
+        # Filter candidate IDs based on progressive config
         if progressive_config['prefer_efficient_arch']:
             all_candidate_ids = [
                 cid for cid in candidate_lookup
                 if get_architecture_efficiency_weight(candidate_lookup[cid][0]) >= 0.6
-            ]
-            if not all_candidate_ids:
-                raise optuna.TrialPruned("No efficient models available in early trials")
+        ]
+        if not all_candidate_ids:
+            raise optuna.TrialPruned("No efficient candidates")
         else:
             all_candidate_ids = list(candidate_lookup.keys())
-        # NEW: Dynamic resource optimization
+
         candidate_id = trial.suggest_categorical("candidate_id", all_candidate_ids)
         backbone, head = candidate_lookup[candidate_id]
-        
+        efficiency_weight = get_architecture_efficiency_weight(backbone)
+
         head = head.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
-        epochs = trial.suggest_int('epochs', 4, progressive_config['max_epochs'])
-        
+
+        epochs = trial.suggest_int('epochs', 4, progressive_config['max_epochs'])   
         batch_size_options = [16, 32, 64] if progressive_config['min_batch_size'] <= 16 else [32, 64]
         batch_size = trial.suggest_categorical('batch_size', batch_size_options)
-        
         optimizer = trial.suggest_categorical('optimizer', ['adam', 'sgd'])
-     
         use_augmentation = trial.suggest_categorical('use_augmentation', [True])
+
         
       
         
