@@ -74,6 +74,8 @@ def optuna_objective(
 
         candidate_id = trial.suggest_categorical("candidate_id", all_candidate_ids)
         backbone, head = candidate_lookup[candidate_id]
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        head = head.to(device)  # Fix mismatch between model and head device
         efficiency_weight = get_architecture_efficiency_weight(backbone)
 
         if progressive_config['prefer_efficient_arch'] and efficiency_weight < 0.6:

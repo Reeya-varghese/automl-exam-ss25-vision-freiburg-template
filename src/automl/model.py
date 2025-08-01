@@ -124,7 +124,7 @@ def get_model(backbone_name, num_classes, grayscale=False, custom_head=None):
     else:
         head = custom_head
     head = head.to(device)  # 
-    model = nn.Sequential(backbone, head)
+    model = nn.Sequential(backbone, head).to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
   
     return model
 
