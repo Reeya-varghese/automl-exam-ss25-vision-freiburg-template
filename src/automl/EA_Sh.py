@@ -14,8 +14,7 @@ from CO2emission import (
     CarbonGPUTracker,
     get_architecture_efficiency_weight,
     get_enhanced_reference_points,
-    get_progressive_config,
-    get_enhanced_reference_points
+    get_progressive_config
 )
 
 from Zero_cost import ZeroCostCandidateGenerator
@@ -73,18 +72,17 @@ def optuna_objective(
             all_candidate_ids = [
                 cid for cid in candidate_lookup
                 if get_architecture_efficiency_weight(candidate_lookup[cid][0]) >= 0.6
-        ]
-        if not all_candidate_ids:
-            raise optuna.TrialPruned("No efficient candidates")
+            ]
+            if not all_candidate_ids:
+                raise optuna.TrialPruned("No efficient candidates")
         else:
             all_candidate_ids = list(candidate_lookup.keys())
-
+            
         candidate_id = trial.suggest_categorical("candidate_id", all_candidate_ids)
         backbone, head = candidate_lookup[candidate_id]
         efficiency_weight = get_architecture_efficiency_weight(backbone)
 
         head = head.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
-
         epochs = trial.suggest_int('epochs', 4, progressive_config['max_epochs'])   
         batch_size_options = [16, 32, 64] if progressive_config['min_batch_size'] <= 16 else [32, 64]
         batch_size = trial.suggest_categorical('batch_size', batch_size_options)

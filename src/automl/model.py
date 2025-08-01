@@ -79,7 +79,7 @@ def get_backbone_loader(backbone_name):
 
 def get_model(backbone_name, num_classes, grayscale=False, custom_head=None):
     device = get_device()
-    backbone = get_backbone_loader(backbone_name)(grayscale=grayscale)
+    backbone = get_backbone_loader(backbone_name)(grayscale=grayscale).to(device)
 
     # Determine feature dimension based on backbone type
     if backbone_name.startswith("resnet"):
@@ -124,7 +124,7 @@ def get_model(backbone_name, num_classes, grayscale=False, custom_head=None):
     else:
         head = custom_head
     head = head.to(device)  # 
-    model = nn.Sequential(backbone, head).to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+    model = nn.Sequential(backbone, head).to(device)
   
     return model
 

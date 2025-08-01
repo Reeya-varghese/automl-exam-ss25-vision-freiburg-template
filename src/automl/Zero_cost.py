@@ -35,7 +35,7 @@ class ZeroCostCandidateGenerator:
     # ------------------ Scoring Functions ------------------ #
     def get_jacobian_score(self, model, input_tensor):
         model.eval()
-        input_tensor = input_tensor.requires_grad_(True)
+        input_tensor = input_tensor.clone().detach().requires_grad_(True)
         output = model(input_tensor)
         jacobian = torch.autograd.grad(outputs=output.sum(), inputs=input_tensor, create_graph=True)[0]
         return jacobian.norm().item()
@@ -141,6 +141,7 @@ class ZeroCostCandidateGenerator:
             head = self.generate_random_head(feat_dim).to(self.device)
 
             feats = self.extract_features(backbone, backbone_name, input_tensor)
+            feats = feats.to(self.device)
 
             jac = self.get_jacobian_score(head, feats)
             grad = self.get_gradnorm_score(head, feats, self.real_target)

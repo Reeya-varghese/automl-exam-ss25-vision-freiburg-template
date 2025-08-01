@@ -209,7 +209,7 @@ class AutoML:
             model.load_state_dict(best_model_state)
             model = model.to(self.device) 
         self._model = model.eval()  
-        self.device = self.device
+    
 
         if trial:
             trial.set_user_attr("history", self._history)
@@ -220,7 +220,7 @@ class AutoML:
 
 
     def predict_on(self, dataset_class: Any, split="test") -> Tuple[np.ndarray, np.ndarray]:
-        self._model.to(self.device)
+        self._model= self._model.to(self.device).eval()
 
         mean, std = calculate_mean_std(dataset_class)
         test_transform = get_transforms(mean, std, phase="test", backbone_name=self.backbone)
@@ -234,7 +234,7 @@ class AutoML:
         data_loader = DataLoader(dataset, batch_size=100, shuffle=False)
         predictions = []
         labels = []
-        self._model.eval()
+    
         with torch.no_grad():
             for data, target in data_loader:
                 data = data.to(self.device)
@@ -254,12 +254,11 @@ class AutoML:
         return preds, labels
     
     def evaluate_on_val(self) -> Tuple[np.ndarray, np.ndarray]:
-        self._model.to(self.device)
+        self._model=self._model.to(self.device).eval()
 
         data_loader = DataLoader(self._val_set, batch_size=100, shuffle=False)
         predictions, labels = [], []
 
-        self._model.eval()
         with torch.no_grad():
             for data, target in data_loader:
                 data = data.to(self.device)
