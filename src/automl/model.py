@@ -30,11 +30,11 @@ def get_transforms(mean, std, phase="train", backbone_name="resnet18"):
 
 
 # ---------------------- Backbone Loaders ----------------------
-def load_resnet18(): return models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
-def load_efficientnet_b0(): return timm.create_model('efficientnet_b0', pretrained=True)
-def load_vit(): return timm.create_model('vit_base_patch16_224', pretrained=True)
-def load_swin(): return timm.create_model('swin_tiny_patch4_window7_224', pretrained=True)
-def load_convnext(): return timm.create_model('convnext_tiny', pretrained=True)
+def load_resnet18(grayscale=False): return models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
+def load_efficientnet_b0(grayscale=False): return timm.create_model('efficientnet_b0', pretrained=True)
+def load_vit(grayscale=False): return timm.create_model('vit_base_patch16_224', pretrained=True)
+def load_swin(grayscale=False): return timm.create_model('swin_tiny_patch4_window7_224', pretrained=True)
+def load_convnext(grayscale=False): return timm.create_model('convnext_tiny', pretrained=True)
 
 
 def get_backbone_loader(name):
