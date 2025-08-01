@@ -82,9 +82,13 @@ def optuna_objective(
         efficiency_weight = get_architecture_efficiency_weight(backbone)
 
         head = head.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+        
+        ALL_BATCH_SIZE_OPTIONS = [16, 32, 64]
+        batch_size = trial.suggest_categorical('batch_size', ALL_BATCH_SIZE_OPTIONS)
+        if progressive_config['min_batch_size'] > 16 and batch_size == 16:
+            raise optuna.TrialPruned("Batch size 16 disallowed by progressive config.")
+
         epochs = trial.suggest_int('epochs', 4, progressive_config['max_epochs'])   
-        batch_size_options = [16, 32, 64] if progressive_config['min_batch_size'] <= 16 else [32, 64]
-        batch_size = trial.suggest_categorical('batch_size', batch_size_options)
         optimizer = trial.suggest_categorical('optimizer', ['adam', 'sgd'])
         use_augmentation = trial.suggest_categorical('use_augmentation', [True])
 

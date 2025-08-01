@@ -123,7 +123,8 @@ class AutoML:
             n=n,
             m=m,
             mean=mean,
-            std=std
+            std=std,
+            backbone_name=self.backbone
         )
 
         train_loader = DataLoader(train_augmented, batch_size=self.batch_size, sampler=sampler)

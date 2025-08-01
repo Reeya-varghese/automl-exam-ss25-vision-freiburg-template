@@ -124,7 +124,7 @@ def get_weighted_sampler(dataset, class_counts):
     return WeightedRandomSampler(weights, num_samples=len(weights), replacement=True)
 
 def prepare_augmented_balanced_dataset(
-    dataset, image_size=(224, 224), grayscale=False, minority_threshold=None, n=2, m=9, mean=(0.5,), std=(0.5,)
+    dataset, image_size=(224, 224), grayscale=False, minority_threshold=None, n=2, m=9, mean=(0.5,), std=(0.5,), backbone_name="resnet18"
 ):
     class_counts = compute_class_distribution(dataset)
 
@@ -134,7 +134,7 @@ def prepare_augmented_balanced_dataset(
 
     normalize = transforms.Normalize(mean, std)
     # Use shared get_transforms for consistent logic (e.g., grayscale -> RGB for transformers)
-    base_aug = get_transforms(mean, std, phase="train", backbone_name="resnet18" if grayscale else "vit_base_patch16_224")
+    base_aug = get_transforms(mean, std, phase="train", backbone_name=backbone_name)
 
     randaug = transforms.Compose([
         RandAugmentFixed(n=n, m=m),

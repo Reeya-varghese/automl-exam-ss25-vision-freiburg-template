@@ -127,4 +127,3 @@ def get_model(backbone_name, num_classes, grayscale=False, custom_head=None):
     model = nn.Sequential(backbone, head).to(device)
   
     return model
-
