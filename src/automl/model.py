@@ -68,41 +68,42 @@ def get_backbone_loader(backbone_name):
     }
     assert backbone_name in loaders, f"Unsupported backbone: {backbone_name}"
     return loaders[backbone_name]
-
-
 def get_model(backbone_name, num_classes, grayscale=False, custom_head=None):
     device = get_device()
-    backbone = get_backbone_loader(backbone_name)(grayscale=grayscale).to(device)
+    
+    # Load backbone
+    backbone = get_backbone_loader(backbone_name)(grayscale=False).to(device)  # Always load as RGB
     
     if grayscale:
         print(f"✅ Using trainable grayscale → RGB adapter for {backbone_name}")
         adapter = GrayscaleToRGBAdapter().to(device)
-        backbone = nn.Sequential(adapter, backbone)
+    else:
+        adapter = nn.Identity()  # No-op if RGB
 
-    # Strip classifier and get feature dimension
+    # Get feature dim
     if backbone_name.startswith("resnet"):
-        features_dim = backbone[-1].fc.in_features
-        backbone[-1].fc = nn.Identity()
+        features_dim = backbone.fc.in_features
+        backbone.fc = nn.Identity()
 
     elif "efficientnet" in backbone_name:
-        features_dim = backbone[-1].classifier.in_features
-        backbone[-1].classifier = nn.Identity()
+        features_dim = backbone.classifier.in_features
+        backbone.classifier = nn.Identity()
 
     elif "vit" in backbone_name:
-        features_dim = backbone[-1].head.in_features
-        backbone[-1].head = nn.Identity()
+        features_dim = backbone.head.in_features
+        backbone.head = nn.Identity()
 
     elif "swin" in backbone_name or "convnext" in backbone_name:
         dummy_input = torch.randn(1, 3, 224, 224).to(device)
         backbone.eval()
         with torch.no_grad():
-            dummy_output = backbone(dummy_input)
-            features_dim = dummy_output.view(1, -1).shape[1]
+            output = backbone(dummy_input)
+            features_dim = output.view(1, -1).shape[1]
 
     else:
-        raise ValueError(f"Unsupported or unknown backbone: {backbone_name}")
+        raise ValueError(f"Unsupported backbone: {backbone_name}")
 
-    # If no custom head, build one based on extracted features
+    # Head
     if custom_head is None:
         head = nn.Sequential(
             nn.Flatten(),
@@ -118,6 +119,6 @@ def get_model(backbone_name, num_classes, grayscale=False, custom_head=None):
     else:
         head = custom_head
 
-    head = head.to(device)
-    model = nn.Sequential(backbone, head).to(device)
+    # Assemble model
+    model = nn.Sequential(adapter, backbone, head).to(device)
     return model

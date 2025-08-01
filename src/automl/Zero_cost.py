@@ -3,9 +3,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 import random
 from copy import deepcopy
-from model import get_backbone_loader
+from model import get_backbone_loader, GrayscaleToRGBAdapter
 
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+
 
 
 class ZeroCostCandidateGenerator:
@@ -30,7 +31,11 @@ class ZeroCostCandidateGenerator:
             name: get_backbone_loader(name)(grayscale=grayscale).to(self.device).eval()
             for name in self.BACKBONE_NAMES
         }
-        
+        if grayscale:
+            self.rgb_adapter = GrayscaleToRGBAdapter().to(self.device)
+        else:
+            self.rgb_adapter = None
+
 
     # ------------------ Scoring Functions ------------------ #
     def get_jacobian_score(self, model, input_tensor):
@@ -113,11 +118,9 @@ class ZeroCostCandidateGenerator:
     def get_feature_dim(self, model, backbone_name):
         model.eval()
     
-        if any(k in backbone_name for k in ["vit", "swin", "convnext"]):
-            dummy_input = torch.randn(1, 3, 224, 224).to(self.device)
-        else:
-            dummy_input = torch.randn(1, self.real_input.shape[1], 224, 224).to(self.device)
-
+        dummy_input = torch.randn(1, 1, 224, 224).to(self.device)
+        if self.rgb_adapter:
+            dummy_input = self.rgb_adapter(dummy_input)
         feats = self.extract_features(model, backbone_name, dummy_input)
         return feats.shape[-1]
 
@@ -129,11 +132,10 @@ class ZeroCostCandidateGenerator:
         for i in range(self.num_candidates):
             backbone_name = random.choice(self.BACKBONE_NAMES)
 
-            if any(k in backbone_name for k in ["vit", "swin", "convnext"]) and self.real_input.shape[1] == 1:
+            input_tensor = self.real_input
+            if self.rgb_adapter:
+                input_tensor = self.rgb_adapter(input_tensor)
 
-                input_tensor = self.real_input.repeat(1, 3, 1, 1)
-            else:
-                input_tensor = self.real_input
 
             backbone = self.backbones[backbone_name]
             feat_dim = self.get_feature_dim(backbone, backbone_name)
