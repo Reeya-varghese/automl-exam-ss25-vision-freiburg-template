@@ -59,7 +59,7 @@ def optuna_objective(
             for i, c in enumerate(top_k_candidates)
         }
     STATIC_CANDIDATE_IDS = list(candidate_lookup.keys())
-
+    STATIC_BATCH_SIZE = [16, 32, 64]
     tracker = CarbonGPUTracker(project_name=f"trial_{trial.number}")
     tracker.start_tracking(trial_id=trial.number)
 
@@ -83,12 +83,13 @@ def optuna_objective(
 
         head = head.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
         
-        ALL_BATCH_SIZE_OPTIONS = [16, 32, 64]
-        batch_size = trial.suggest_categorical('batch_size', ALL_BATCH_SIZE_OPTIONS)
+     
+        batch_size = trial.suggest_categorical('batch_size', STATIC_BATCH_SIZE)
+
         if progressive_config['min_batch_size'] > 16 and batch_size == 16:
             raise optuna.TrialPruned("Batch size 16 disallowed by progressive config.")
 
-        epochs = trial.suggest_int('epochs', 4, progressive_config['max_epochs'])   
+        epochs = trial.suggest_int('epochs',8, progressive_config['max_epochs'])
         optimizer = trial.suggest_categorical('optimizer', ['adam', 'sgd'])
         use_augmentation = trial.suggest_categorical('use_augmentation', [True])
 

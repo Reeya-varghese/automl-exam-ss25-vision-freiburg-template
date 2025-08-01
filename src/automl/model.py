@@ -81,7 +81,7 @@ def get_model(backbone_name, num_classes, grayscale=False, custom_head=None):
     device = get_device()
     backbone = get_backbone_loader(backbone_name)(grayscale=grayscale).to(device)
 
-    # Determine feature dimension based on backbone type
+    # Strip classifier and get feature dimension
     if backbone_name.startswith("resnet"):
         features_dim = backbone.fc.in_features
         backbone.fc = nn.Identity()
@@ -97,8 +97,6 @@ def get_model(backbone_name, num_classes, grayscale=False, custom_head=None):
         backbone.head = nn.Identity()
 
     elif "swin" in backbone_name or "convnext" in backbone_name:
-        # Use dummy forward pass
-      
         dummy_input = torch.randn(1, 3, 224, 224).to(device)
         backbone.eval()
         with torch.no_grad():
@@ -108,7 +106,7 @@ def get_model(backbone_name, num_classes, grayscale=False, custom_head=None):
     else:
         raise ValueError(f"Unsupported or unknown backbone: {backbone_name}")
 
-
+    # If no custom head, build one based on extracted features
     if custom_head is None:
         head = nn.Sequential(
             nn.Flatten(),
@@ -123,7 +121,7 @@ def get_model(backbone_name, num_classes, grayscale=False, custom_head=None):
         )
     else:
         head = custom_head
-    head = head.to(device)  # 
+
+    head = head.to(device)
     model = nn.Sequential(backbone, head).to(device)
-  
     return model
