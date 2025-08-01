@@ -114,8 +114,8 @@ class ZeroCostCandidateGenerator:
     # ------------------ Feature Dimension Extraction ------------------ #
     def get_feature_dim(self, model, backbone_name):
         model.eval()
-    
-        dummy_input = torch.randn(1, 1, 224, 224).to(self.device)
+        in_channels = 1 if self.rgb_adapter else 3
+        dummy_input = torch.randn(1, in_channels, 224, 224).to(self.device)
         if self.rgb_adapter:
             dummy_input = self.rgb_adapter(dummy_input)
         feats = self.extract_features(model, backbone_name, dummy_input)
