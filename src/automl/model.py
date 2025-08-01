@@ -82,6 +82,7 @@ def get_model(backbone_name, num_classes, grayscale=False, custom_head=None):
         )
 
     elif "swin" in backbone_name or "convnext" in backbone_name:
+        base.head = nn.Identity()  # <--- ensure classifier is removed
         features_dim = base.num_features
         extractor = nn.Sequential(
             LambdaLayer(lambda x: base.forward_features(x).mean(dim=1))
@@ -103,6 +104,8 @@ def get_model(backbone_name, num_classes, grayscale=False, custom_head=None):
             nn.BatchNorm1d(1024),
             nn.Linear(1024, num_classes)
         )
+    else:
+        head = custom_head    
 
     model = nn.Sequential(adapter, extractor, head).to(device)
     return model
