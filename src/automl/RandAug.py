@@ -5,7 +5,7 @@ from torchvision import transforms
 from torch.utils.data import Dataset, WeightedRandomSampler
 from collections import Counter, defaultdict
 from torchvision.transforms import Lambda
-
+from model import get_transforms
 # =============================================================================
 # 🧩 RAND-AUGMENT (Fixed Version)
 # =============================================================================
@@ -133,24 +133,14 @@ def prepare_augmented_balanced_dataset(
         minority_threshold = sorted_counts[1] if len(sorted_counts) > 1 else sorted_counts[0]
 
     normalize = transforms.Normalize(mean, std)
-    RGB_conv = Lambda(lambda x: x.repeat(3, 1, 1) if x.shape[0] == 1 else x)
-
-    base_aug = transforms.Compose([
-        transforms.Resize(image_size),
-        transforms.RandomHorizontalFlip(0.5),
-        transforms.ToTensor(),
-        RGB_conv,
-        normalize
-    ])
+    # Use shared get_transforms for consistent logic (e.g., grayscale -> RGB for transformers)
+    base_aug = get_transforms(mean, std, phase="train", backbone_name="resnet18" if grayscale else "vit_base_patch16_224")
 
     randaug = transforms.Compose([
-        transforms.Resize(image_size),
         RandAugmentFixed(n=n, m=m),
-        transforms.RandomHorizontalFlip(0.5),
-        transforms.ToTensor(),
-        RGB_conv,
-        normalize
+        *base_aug.transforms  # reuse resizing, tensor conversion, normalization
     ])
+
 
     dataset_aug = AugmentedMinorityDataset(dataset, class_counts, minority_threshold, base_aug, randaug)
     sampler = get_weighted_sampler(dataset_aug, class_counts)

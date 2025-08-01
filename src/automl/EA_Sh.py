@@ -219,8 +219,11 @@ if __name__ == "__main__":
 
     print("✅ Top-K candidates based on Zero-Cost scores:")
     for i, c in enumerate(top_k_candidates):
-        print(f"[{i+1}] Backbone: {c['backbone']}, Combined Score: {c['combined_score']:.4f}")
-    
+        print(f"[{i+1}] Backbone: {c['backbone']}, "
+      f"Jacobian: {c['jacobian_score']:.4f}, "
+      f"GradNorm: {c['gradnorm_score']:.4f}, "
+      f"Total: {c['combined_score']:.4f}")
+
     # Reference points for NSGAIII
     reference_points = get_enhanced_reference_points()
 
