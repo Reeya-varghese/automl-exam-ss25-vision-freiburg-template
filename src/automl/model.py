@@ -3,7 +3,14 @@ import torch.nn as nn
 from torchvision import models, transforms
 import timm
 
+class LambdaLayer(nn.Module):
+    def __init__(self, fn):
+        super().__init__()
+        self.fn = fn
 
+    def forward(self, x):
+        return self.fn(x)
+    
 class GrayscaleToRGBAdapter(nn.Module):
     def __init__(self):
         super().__init__()
@@ -51,11 +58,8 @@ def get_backbone_loader(name):
 def get_model(backbone_name, num_classes, grayscale=False, custom_head=None):
     device = get_device()
     base = get_backbone_loader(backbone_name)().to(device)
-
-    # Input adapter
     adapter = GrayscaleToRGBAdapter().to(device) if grayscale else nn.Identity()
 
-    # Feature extractor
     if "resnet" in backbone_name:
         features_dim = base.fc.in_features
         base.fc = nn.Identity()
@@ -65,7 +69,7 @@ def get_model(backbone_name, num_classes, grayscale=False, custom_head=None):
         features_dim = base.classifier.in_features
         base.classifier = nn.Identity()
         extractor = nn.Sequential(
-            nn.Lambda(lambda x: base.forward_features(x)),
+            LambdaLayer(lambda x: base.forward_features(x)),
             nn.AdaptiveAvgPool2d((1, 1)),
             nn.Flatten()
         )
@@ -74,35 +78,31 @@ def get_model(backbone_name, num_classes, grayscale=False, custom_head=None):
         features_dim = base.head.in_features
         base.head = nn.Identity()
         extractor = nn.Sequential(
-            nn.Lambda(lambda x: base.forward_features(x).mean(dim=1))
+            LambdaLayer(lambda x: base.forward_features(x).mean(dim=1))
         )
 
     elif "swin" in backbone_name or "convnext" in backbone_name:
         features_dim = base.num_features
         extractor = nn.Sequential(
-            nn.Lambda(lambda x: base.forward_features(x)),
-            nn.AdaptiveAvgPool2d((1, 1)),
-            nn.Flatten()
+            LambdaLayer(lambda x: base.forward_features(x).mean(dim=1))
         )
 
     else:
         raise ValueError(f"Unsupported backbone: {backbone_name}")
 
-    # Head
     if custom_head is None:
         head = nn.Sequential(
             nn.BatchNorm1d(features_dim),
             nn.Linear(features_dim, 2048),
             nn.ReLU(),
+            nn.Dropout(0.2),
             nn.BatchNorm1d(2048),
             nn.Linear(2048, 1024),
             nn.ReLU(),
+            nn.Dropout(0.2),
             nn.BatchNorm1d(1024),
             nn.Linear(1024, num_classes)
         )
-    else:
-        head = custom_head
 
-    # Full model
     model = nn.Sequential(adapter, extractor, head).to(device)
     return model
