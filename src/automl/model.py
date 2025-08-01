@@ -70,40 +70,49 @@ def get_backbone_loader(backbone_name):
     return loaders[backbone_name]
 def get_model(backbone_name, num_classes, grayscale=False, custom_head=None):
     device = get_device()
-    
-    # Load backbone
-    backbone = get_backbone_loader(backbone_name)(grayscale=False).to(device)  # Always load as RGB
-    
+
+    # Load the base backbone as RGB
+    base_backbone = get_backbone_loader(backbone_name)(grayscale=False).to(device)
+
     if grayscale:
         print(f"✅ Using trainable grayscale → RGB adapter for {backbone_name}")
         adapter = GrayscaleToRGBAdapter().to(device)
     else:
-        adapter = nn.Identity()  # No-op if RGB
+        adapter = nn.Identity()
 
-    # Get feature dim
+    # Extract features_dim
     if backbone_name.startswith("resnet"):
-        features_dim = backbone.fc.in_features
-        backbone.fc = nn.Identity()
+        features_dim = base_backbone.fc.in_features
+        base_backbone.fc = nn.Identity()
+        backbone = base_backbone
 
     elif "efficientnet" in backbone_name:
-        features_dim = backbone.classifier.in_features
-        backbone.classifier = nn.Identity()
+        features_dim = base_backbone.classifier.in_features
+        base_backbone.classifier = nn.Identity()
+        backbone = base_backbone
 
     elif "vit" in backbone_name:
-        features_dim = backbone.head.in_features
-        backbone.head = nn.Identity()
+        features_dim = base_backbone.head.in_features
+        base_backbone.head = nn.Identity()
+        backbone = base_backbone
 
     elif "swin" in backbone_name or "convnext" in backbone_name:
-        dummy_input = torch.randn(1, 3, 224, 224).to(device)
-        backbone.eval()
-        with torch.no_grad():
-            output = backbone(dummy_input)
-            features_dim = output.view(1, -1).shape[1]
+        features_dim = base_backbone.num_features
+
+        # ✅ wrap forward_features in a module
+        class Wrapper(nn.Module):
+            def __init__(self, model):
+                super().__init__()
+                self.model = model
+            def forward(self, x):
+                return self.model.forward_features(x)
+
+        backbone = Wrapper(base_backbone)
 
     else:
         raise ValueError(f"Unsupported backbone: {backbone_name}")
 
-    # Head
+    # Custom head
     if custom_head is None:
         head = nn.Sequential(
             nn.Flatten(),
@@ -119,6 +128,6 @@ def get_model(backbone_name, num_classes, grayscale=False, custom_head=None):
     else:
         head = custom_head
 
-    # Assemble model
+    # Assemble full model
     model = nn.Sequential(adapter, backbone, head).to(device)
     return model

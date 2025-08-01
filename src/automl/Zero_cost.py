@@ -8,8 +8,19 @@ from model import get_backbone_loader, GrayscaleToRGBAdapter
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
-
+def wrap_backbone(name, model):
+    if any(k in name for k in ["vit", "swin", "convnext", "efficientnet"]):
+        class Wrapper(nn.Module):
+            def __init__(self, m):
+                super().__init__()
+                self.model = m
+            def forward(self, x):
+                return self.model.forward_features(x)
+        return Wrapper(model)
+    return model
 class ZeroCostCandidateGenerator:
+ 
+    
     def __init__(self, real_input, real_target, num_candidates=100, top_k=10, num_classes=7):
         self.real_input = real_input.to(DEVICE)
         self.real_target = real_target.to(DEVICE)
@@ -26,17 +37,18 @@ class ZeroCostCandidateGenerator:
         "swin_tiny_patch4_window7_224",
         "convnext_tiny"
 ]
-
+    
+    
         self.backbones = {
-            name: get_backbone_loader(name)(grayscale=grayscale).to(self.device).eval()
+            name: wrap_backbone(name, get_backbone_loader(name)(grayscale=False).to(self.device).eval())
             for name in self.BACKBONE_NAMES
         }
         if grayscale:
             self.rgb_adapter = GrayscaleToRGBAdapter().to(self.device)
         else:
             self.rgb_adapter = None
-
-
+    
+    
     # ------------------ Scoring Functions ------------------ #
     def get_jacobian_score(self, model, input_tensor):
         model.eval()
@@ -86,33 +98,18 @@ class ZeroCostCandidateGenerator:
     
     def extract_features(self, backbone, backbone_name, input_tensor):
         with torch.no_grad():
-            if "vit" in backbone_name:
-                features = backbone.forward_features(input_tensor)
-                if features.ndim == 3:
-                    features = features[:, 0, :]  # [CLS] token
-                else:
-                    features = features.mean(dim=1)  # fallback if [CLS] doesn't exist
-                return features
-            elif "swin" in backbone_name or "convnext" in backbone_name:
-                x = backbone.forward_features(input_tensor)
-                if x.ndim == 3:
-                    return x.mean(dim=1)
-                elif x.ndim == 4:
-                    return F.adaptive_avg_pool2d(x, 1).reshape(x.size(0), -1)
-                else:
-                    raise ValueError(f"Unexpected shape from {backbone_name}: {x.shape}")
-                
-            elif "efficientnet" in backbone_name:
-                x = backbone.forward_features(input_tensor)
+            x = backbone(input_tensor)
+
+        # Handle common output shapes
+            if x.ndim == 4:  # e.g., [B, C, H, W]
                 return F.adaptive_avg_pool2d(x, 1).reshape(x.size(0), -1)
-            elif "resnet" in backbone_name:
-                x = backbone.conv1(input_tensor); x = backbone.bn1(x); x = backbone.relu(x)
-                x = backbone.maxpool(x); x = backbone.layer1(x); x = backbone.layer2(x)
-                x = backbone.layer3(x); x = backbone.layer4(x); x = backbone.avgpool(x)
-                return torch.flatten(x, 1)
+            elif x.ndim == 3:  # e.g., ViT with [B, Tokens, D]
+                return x.mean(dim=1)
+            elif x.ndim == 2:  # already flattened features
+                return x
             else:
-                raise ValueError(f"Unsupported backbone: {backbone_name}")
-            
+                raise ValueError(f"Unsupported feature shape from {backbone_name}: {x.shape}")
+
 
     # ------------------ Feature Dimension Extraction ------------------ #
     def get_feature_dim(self, model, backbone_name):
