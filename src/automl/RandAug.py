@@ -6,6 +6,7 @@ from torch.utils.data import Dataset, WeightedRandomSampler
 from collections import Counter, defaultdict
 from torchvision.transforms import Lambda
 from model import get_transforms
+import torch
 # =============================================================================
 # 🧩 RAND-AUGMENT (Fixed Version)
 # =============================================================================
@@ -112,11 +113,18 @@ class AugmentedMinorityDataset(Dataset):
 
     def __getitem__(self, idx):
         img, label = self.dataset[idx]
+    
         if self.class_counts[label] < self.minority_threshold:
             img = self.randaug(img)
         else:
             img = self.base_aug(img)
+
+    # Optional debug assertion
+        if isinstance(img, torch.Tensor):
+            assert img.shape[0] in [1, 3], f"Unexpected channel shape: {img.shape}"
+
         return img, label
+
 
 def get_weighted_sampler(dataset, class_counts):
     targets = [label for _, label in dataset]
@@ -124,7 +132,7 @@ def get_weighted_sampler(dataset, class_counts):
     return WeightedRandomSampler(weights, num_samples=len(weights), replacement=True)
 
 def prepare_augmented_balanced_dataset(
-    dataset, image_size=(224, 224), grayscale=False, minority_threshold=None, n=2, m=9, mean=(0.5,), std=(0.5,), backbone_name="resnet18"
+    dataset, image_size=(224, 224), minority_threshold=None, n=2, m=9, mean=(0.5,), std=(0.5,), backbone_name="resnet18"
 ):
     class_counts = compute_class_distribution(dataset)
 

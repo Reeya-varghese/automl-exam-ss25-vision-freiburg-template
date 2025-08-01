@@ -3,13 +3,20 @@ import torch.nn as nn
 from torchvision import models, transforms
 import timm
 
+class GrayscaleToRGBAdapter(nn.Module):
+    def __init__(self):
+        super().__init__()
+        # 1x1 Conv to map 1-channel → 3-channel
+        self.adapter = nn.Conv2d(1, 3, kernel_size=3, stride=1, padding=1)
+
+    def forward(self, x):
+        return self.adapter(x)
 
 def get_device():
     return 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def get_transforms(mean, std, phase="train", backbone_name="resnet18"):
-    is_transformer = any(k in backbone_name.lower() for k in ["vit", "swin", "convnext"])
-
+   
     tf = [transforms.Resize((224, 224))]
 
     if phase == "train":
@@ -20,9 +27,6 @@ def get_transforms(mean, std, phase="train", backbone_name="resnet18"):
 
     tf.append(transforms.ToTensor())  # convert PIL to tensor first
 
-    if is_transformer:
-        # Now it's a tensor, so .repeat works
-        tf.append(transforms.Lambda(lambda x: x.repeat(3, 1, 1) if x.shape[0] == 1 else x))
 
     tf.append(transforms.Normalize(mean, std))
 
@@ -32,23 +36,12 @@ def get_transforms(mean, std, phase="train", backbone_name="resnet18"):
 
 def load_resnet18(grayscale=False):
     model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
-    if grayscale:
-        conv1 = model.conv1
-        model.conv1 = nn.Conv2d(1, conv1.out_channels, conv1.kernel_size,
-                                stride=conv1.stride, padding=conv1.padding, bias=False)
-        with torch.no_grad():
-            model.conv1.weight = nn.Parameter(conv1.weight.sum(dim=1, keepdim=True))
     return model
 
 
 def load_efficientnet_b0(grayscale=False):
     model = timm.create_model('efficientnet_b0', pretrained=True)
-    if grayscale:
-        conv = model.conv_stem
-        model.conv_stem = nn.Conv2d(1, conv.out_channels, conv.kernel_size,
-                                    stride=conv.stride, padding=conv.padding, bias=False)
-        with torch.no_grad():
-            model.conv_stem.weight = nn.Parameter(conv.weight.sum(dim=1, keepdim=True))
+
     return model
 
 
@@ -80,21 +73,24 @@ def get_backbone_loader(backbone_name):
 def get_model(backbone_name, num_classes, grayscale=False, custom_head=None):
     device = get_device()
     backbone = get_backbone_loader(backbone_name)(grayscale=grayscale).to(device)
+    
+    if grayscale:
+        print(f"✅ Using trainable grayscale → RGB adapter for {backbone_name}")
+        adapter = GrayscaleToRGBAdapter().to(device)
+        backbone = nn.Sequential(adapter, backbone)
 
     # Strip classifier and get feature dimension
     if backbone_name.startswith("resnet"):
-        features_dim = backbone.fc.in_features
-        backbone.fc = nn.Identity()
+        features_dim = backbone[-1].fc.in_features
+        backbone[-1].fc = nn.Identity()
 
     elif "efficientnet" in backbone_name:
-        features_dim = backbone.classifier.in_features
-        backbone.classifier = nn.Identity()
+        features_dim = backbone[-1].classifier.in_features
+        backbone[-1].classifier = nn.Identity()
 
     elif "vit" in backbone_name:
-        if grayscale:
-            print(f"⚠️ Grayscale + ViT: input will be repeated to 3 channels")
-        features_dim = backbone.head.in_features
-        backbone.head = nn.Identity()
+        features_dim = backbone[-1].head.in_features
+        backbone[-1].head = nn.Identity()
 
     elif "swin" in backbone_name or "convnext" in backbone_name:
         dummy_input = torch.randn(1, 3, 224, 224).to(device)
