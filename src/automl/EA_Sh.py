@@ -71,6 +71,8 @@ def optuna_objective(
         progressive_config = get_progressive_config(trial.number, total_trials, enable_progressive)
 
         candidate_id = trial.suggest_categorical("candidate_id", STATIC_CANDIDATE_IDS)
+        if candidate_id not in candidate_lookup:
+            raise optuna.TrialPruned(f"Invalid candidate_id: {candidate_id}")
         backbone, head = candidate_lookup[candidate_id]
 
 # now apply progressive constraint manually

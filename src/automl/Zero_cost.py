@@ -7,7 +7,6 @@ from model import get_backbone_loader, GrayscaleToRGBAdapter
 
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-
 def wrap_backbone(name, model):
     if name.startswith("resnet"):
         model.fc = nn.Identity()
@@ -15,8 +14,10 @@ def wrap_backbone(name, model):
         model.classifier = nn.Identity()
     elif "vit" in name:
         model.head = nn.Identity()
+    elif "swin" in name or "convnext" in name:
+        # no changes to model structure — handled in wrapper logic below
+        pass
 
-    # Wrap to unify feature extraction behavior
     class Wrapper(nn.Module):
         def __init__(self, m):
             super().__init__()
@@ -27,13 +28,20 @@ def wrap_backbone(name, model):
                 x = self.model.forward_features(x)
             else:
                 x = self.model(x)
-            if x.ndim == 4:
-                return F.adaptive_avg_pool2d(x, 1).view(x.size(0), -1)
-            elif x.ndim == 3:
-                return x.mean(dim=1)
+
+            # 🧠 Fix output based on shape
+            if x.ndim == 4:  # [B, C, H, W]
+                x = F.adaptive_avg_pool2d(x, 1).view(x.size(0), -1)
+            elif x.ndim == 3:  # [B, N, D] from ViT/Swin/ConvNeXt
+                x = x.mean(dim=1)
+            elif x.ndim == 2:
+                pass  # already flattened
+            else:
+                raise ValueError(f"Unexpected shape from model: {x.shape}")
             return x
 
     return Wrapper(model)
+
 
 
 def has_adapter(model):
