@@ -43,6 +43,7 @@ logging.getLogger("codecarbon").propagate = False
 
 logger = logging.getLogger(__name__)
 
+
 def optuna_objective(
     trial: optuna.Trial,
     dataset_class: Any,
@@ -53,33 +54,31 @@ def optuna_objective(
     enable_progressive: bool = True,
     total_trials: int = 10 
     ) -> Tuple[float, float, float,float, float]:
+    candidate_lookup = {
+            f"{c['backbone']}_{i}": (c['backbone'], c['head'])
+            for i, c in enumerate(top_k_candidates)
+        }
+    STATIC_CANDIDATE_IDS = list(candidate_lookup.keys())
 
     tracker = CarbonGPUTracker(project_name=f"trial_{trial.number}")
     tracker.start_tracking(trial_id=trial.number)
 
     try:
         # Your existing hyperparameter suggestions (unchanged)
-        candidate_lookup = {
-            f"{c['backbone']}_{i}": (c['backbone'], c['head'])
-            for i, c in enumerate(top_k_candidates)
-        }
+        
         lr = trial.suggest_float('lr', 1e-4, 1e-2, log=True)
 
         progressive_config = get_progressive_config(trial.number, total_trials, enable_progressive)
 
-        # Filter candidate IDs based on progressive config
-        if progressive_config['prefer_efficient_arch']:
-            all_candidate_ids = [
-                cid for cid in candidate_lookup
-                if get_architecture_efficiency_weight(candidate_lookup[cid][0]) >= 0.6
-            ]
-            if not all_candidate_ids:
-                raise optuna.TrialPruned("No efficient candidates")
-        else:
-            all_candidate_ids = list(candidate_lookup.keys())
-            
-        candidate_id = trial.suggest_categorical("candidate_id", all_candidate_ids)
+        candidate_id = trial.suggest_categorical("candidate_id", STATIC_CANDIDATE_IDS)
         backbone, head = candidate_lookup[candidate_id]
+
+# now apply progressive constraint manually
+        if progressive_config['prefer_efficient_arch']:
+            efficiency = get_architecture_efficiency_weight(backbone)
+            if efficiency < 0.6:
+                raise optuna.TrialPruned(f"Backbone {backbone} below efficiency threshold.")        
+   
         efficiency_weight = get_architecture_efficiency_weight(backbone)
 
         head = head.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
