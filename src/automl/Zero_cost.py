@@ -15,8 +15,7 @@ def wrap_backbone(name, model):
     elif "vit" in name:
         model.head = nn.Identity()
     elif "swin" in name or "convnext" in name:
-        # no changes to model structure — handled in wrapper logic below
-        pass
+        model.head = nn.Identity()  # 🔧 This line was missing
 
     class Wrapper(nn.Module):
         def __init__(self, m):
@@ -29,7 +28,6 @@ def wrap_backbone(name, model):
             else:
                 x = self.model(x)
 
-            # 🧠 Fix output based on shape
             if x.ndim == 4:  # [B, C, H, W]
                 x = F.adaptive_avg_pool2d(x, 1).view(x.size(0), -1)
             elif x.ndim == 3:  # [B, N, D] from ViT/Swin/ConvNeXt
@@ -41,6 +39,7 @@ def wrap_backbone(name, model):
             return x
 
     return Wrapper(model)
+
 
 
 
@@ -129,7 +128,6 @@ class ZeroCostCandidateGenerator:
             backbone = self.backbones[backbone_name]
             input_tensor = self.adapt_input(self.real_input) if not has_adapter(backbone) else self.real_input
 
-            print(f"[DEBUG] Using backbone: {backbone_name}")
             feat_dim = self.get_feature_dim(backbone, backbone_name)
             feats = backbone(input_tensor)
 
