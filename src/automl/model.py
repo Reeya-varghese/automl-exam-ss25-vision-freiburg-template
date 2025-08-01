@@ -78,6 +78,7 @@ def get_backbone_loader(backbone_name):
 
 
 def get_model(backbone_name, num_classes, grayscale=False, custom_head=None):
+    device = get_device()
     backbone = get_backbone_loader(backbone_name)(grayscale=grayscale)
 
     # Determine feature dimension based on backbone type
@@ -97,7 +98,7 @@ def get_model(backbone_name, num_classes, grayscale=False, custom_head=None):
 
     elif "swin" in backbone_name or "convnext" in backbone_name:
         # Use dummy forward pass
-        device = get_device()
+      
         dummy_input = torch.randn(1, 3, 224, 224).to(device)
         backbone.eval()
         with torch.no_grad():
@@ -122,7 +123,7 @@ def get_model(backbone_name, num_classes, grayscale=False, custom_head=None):
         )
     else:
         head = custom_head
-
+    head = head.to(device)  # 
     model = nn.Sequential(backbone, head)
   
     return model

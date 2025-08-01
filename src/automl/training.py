@@ -206,7 +206,7 @@ class AutoML:
             model.train()
         if best_model_state:
             model.load_state_dict(best_model_state)
-       
+            model = model.to(self.device) 
         self._model = model.eval()  
         self.device = self.device
 
@@ -219,7 +219,8 @@ class AutoML:
 
 
     def predict_on(self, dataset_class: Any, split="test") -> Tuple[np.ndarray, np.ndarray]:
-        
+        self._model.to(self.device)
+
         mean, std = calculate_mean_std(dataset_class)
         test_transform = get_transforms(mean, std, phase="test", backbone_name=self.backbone)
 
@@ -252,6 +253,8 @@ class AutoML:
         return preds, labels
     
     def evaluate_on_val(self) -> Tuple[np.ndarray, np.ndarray]:
+        self._model.to(self.device)
+
         data_loader = DataLoader(self._val_set, batch_size=100, shuffle=False)
         predictions, labels = [], []
 

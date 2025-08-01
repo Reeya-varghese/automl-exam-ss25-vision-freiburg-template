@@ -1,8 +1,22 @@
 import torch
 import time
 import threading
-from codecarbon import EmissionsTracker
+
 import numpy as np
+
+import warnings
+import logging
+import os
+import sys
+from contextlib import contextmanager
+import contextlib
+# Suppress all warnings globally
+warnings.filterwarnings("ignore")
+
+# Silence specific loggers
+logging.getLogger("codecarbon").setLevel(logging.ERROR)
+logging.getLogger("codecarbon").propagate = False
+
 class CarbonGPUTracker:
     """Smart carbon emissions and GPU tracking"""
     
@@ -22,12 +36,14 @@ class CarbonGPUTracker:
         
         # Initialize CodeCarbon tracker
         tracker_name = f"{self.project_name}_trial_{trial_id}" if trial_id else self.project_name
-        self.emissions_tracker = EmissionsTracker(
-            project_name=tracker_name,
-            measure_power_secs=15,
-            save_to_file=True,
-            log_level="WARNING"
-        )
+        with contextlib.redirect_stdout(open(os.devnull, 'w')):
+            from codecarbon import EmissionsTracker
+            self.emissions_tracker = EmissionsTracker(
+                project_name=tracker_name,
+                measure_power_secs=15,
+                save_to_file=True,
+                log_level="error"  # Ensures minimal logging
+            )
         self.emissions_tracker.start()
         
         # Reset GPU memory stats

@@ -32,34 +32,16 @@ from model import get_transforms
 from utils import calculate_mean_std
 from vision_datasets import FashionDataset, FlowersDataset, EmotionsDataset, SkinCancerDataset
 from torch.utils.data import random_split
-import warnings
-warnings.filterwarnings("ignore")
-import sys
-import os
 import logging
-from contextlib import contextmanager
+import warnings
 
-@contextmanager
-def suppress_stdout():
-    with open(os.devnull, 'w') as devnull:
-        old_stdout = sys.stdout
-        sys.stdout = devnull
-        try:
-            yield
-        finally:
-            sys.stdout = old_stdout
+# Suppress all warnings globally
+warnings.filterwarnings("ignore")
 
-# Use it like this:
-with suppress_stdout():
-    from codecarbon import EmissionsTracker
-    logging.getLogger("codecarbon").setLevel(logging.CRITICAL)
-    tracker = EmissionsTracker()
-    tracker.start()
-# ---------------------------------------------
-
-logging.getLogger("codecarbon").handlers.clear()
+# Silence codecarbon loggers
+logging.getLogger("codecarbon").setLevel(logging.ERROR)
 logging.getLogger("codecarbon").propagate = False
-logging.getLogger("codecarbon").setLevel(logging.CRITICAL)
+
 logger = logging.getLogger(__name__)
 
 def optuna_objective(
