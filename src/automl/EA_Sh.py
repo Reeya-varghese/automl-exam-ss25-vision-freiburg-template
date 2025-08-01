@@ -59,7 +59,7 @@ def optuna_objective(
             for i, c in enumerate(top_k_candidates)
         }
     STATIC_CANDIDATE_IDS = list(candidate_lookup.keys())
-    STATIC_BATCH_SIZE = [16, 32, 64]
+    STATIC_BATCH_SIZE = [32, 16]
     tracker = CarbonGPUTracker(project_name=f"trial_{trial.number}")
     tracker.start_tracking(trial_id=trial.number)
 
