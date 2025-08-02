@@ -448,6 +448,7 @@ if __name__ == "__main__":
         dataset_class, transform, args.seed, args.enable_smote, smote_config
     )
 
+    train_set = fix_dataset_transforms(train_set)
     sample_loader = DataLoader(train_set, batch_size=8, shuffle=True)
     real_input, real_target = next(iter(sample_loader))
 
