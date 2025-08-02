@@ -12,6 +12,7 @@ from model import get_model, get_transforms
 from utils import calculate_mean_std
 from torch.utils.data import Subset, random_split
 from RandAug import prepare_augmented_balanced_dataset
+from DAC import DynamicAdjustmentController
 # ---------------------------------------------
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ class AutoML:
         backbone: str = "resnet18",
         batch_size: int = 64,
         epochs: int = 20,
+      
         custom_head: nn.Module = None ,
         optimizer = 'adam'
     ) -> None:
@@ -33,6 +35,7 @@ class AutoML:
         self.num_layers_to_freeze = num_layers_to_freeze
         self.optimizer = optimizer
         self.lr = lr
+        self.dac = None
         self.custom_head = custom_head
         self.backbone = backbone
         self.epochs = epochs
@@ -143,14 +146,16 @@ class AutoML:
             optimizer = optim.Adam(model.parameters(), lr=self.lr)
         elif self.optimizer:
             optimizer = optim.SGD(model.parameters(), lr=self.lr, momentum=0.9)
-
+        if dataset_class.__name__ == "SkinCancerDataset":
+            print("[DEBUG] DAC ENABLED")
+            self.dac = DynamicAdjustmentController(optimizer, initial_lr=self.lr)
+        
         criterion = nn.CrossEntropyLoss()
 
         self._history = {"loss": [], "acc": [], "val_loss": [], "val_acc": []}
         
         best_val_acc = 0.0
-        patience = 5
-        wait = 0
+        
         best_model_state = None
 
         model.train()
@@ -195,17 +200,15 @@ class AutoML:
                 
             logger.info(f"Epoch {epoch + 1}, Loss: {epoch_loss:.4f}, Acc: {epoch_acc:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}")
             print(f"Epoch {epoch + 1}, Loss: {epoch_loss:.4f}, Acc: {epoch_acc:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}")
-          
+            
+            if self.dac:
+                self.dac.update(epoch_loss)
+                optimizer = self.dac.get_optimizer()
+
             if val_acc > best_val_acc:
                 best_val_acc = val_acc
                 best_model_state = deepcopy(model.state_dict())
-                wait = 0
-            else:
-                wait += 1
-                if wait >= patience:
-                    print(f"⏹️ Early stopping at epoch {epoch + 1} — Best Val Acc: {best_val_acc:.4f}")
-
-                    break
+                
             model.train()
         if best_model_state:
             model.load_state_dict(best_model_state)
