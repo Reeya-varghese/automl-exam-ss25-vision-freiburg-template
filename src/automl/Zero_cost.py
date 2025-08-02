@@ -133,7 +133,7 @@ class ZeroCostCandidateGenerator:
             feat_dim = self.get_feature_dim(backbone, backbone_name)
             
 
-            print(f"[DEBUG] Feature shape for {backbone_name}: {feat_dim}")
+            #print(f"[DEBUG] Feature shape for {backbone_name}: {feat_dim}")
 
             head = self.generate_random_head(feat_dim).to(self.device)
             jac = self.get_jacobian_score(backbone, head,input_tensor)
