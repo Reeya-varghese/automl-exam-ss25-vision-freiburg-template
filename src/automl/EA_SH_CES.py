@@ -114,7 +114,8 @@ def get_progressive_config(trial_number, total_trials, enable_progressive=True):
             'prefer_efficient_arch': False
         }
     
-    progress_ratio = trial_number / total_trials
+    #progress_ratio = trial_number / total_trials
+    progress_ratio = trial_number / max(total_trials, 1)  # Fix: avoid division by zero
     
     if progress_ratio < 0.3:  # First 30% of trials: focus on efficiency
         return {
@@ -162,7 +163,8 @@ def optuna_objective(
     seed: int = 42,
     top_k_candidates: list[dict[str, Any]] = None,
     carbon_budget_kg: float = 0.1,
-    enable_progressive: bool = True
+    enable_progressive: bool = True,
+    total_trials: int = 10 # Add this parameter
     ) -> Tuple[float, float, float, float, float]:
     """Enhanced objective with carbon and GPU tracking"""
     
@@ -179,7 +181,8 @@ def optuna_objective(
         lr = trial.suggest_float('lr', 1e-4, 1e-2, log=True)
         
         # NEW: Progressive configuration
-        progressive_config = get_progressive_config(trial.number, trial.study.n_trials, enable_progressive)
+        # progressive_config = get_progressive_config(trial.number, trial.study.n_trials, enable_progressive)
+        progressive_config = get_progressive_config(trial.number, total_trials, enable_progressive)
         
         # NEW: Dynamic batch size and epochs based on progressive strategy
         if progressive_config['prefer_efficient_arch']:
@@ -351,7 +354,8 @@ if __name__ == "__main__":
         seed=args.seed,
         top_k_candidates=top_k_candidates,
         carbon_budget_kg=args.carbon_budget,
-        enable_progressive=args.enable_progressive
+        enable_progressive=args.enable_progressive,
+        total_trials=args.n_trials  # Fix: Pass the total number of trials
     ), n_trials=args.n_trials)
 
     global_metrics = global_tracker.stop_tracking()
