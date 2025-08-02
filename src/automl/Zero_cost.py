@@ -14,7 +14,7 @@ def wrap_backbone(name, model):
         model.classifier = nn.Identity()
     elif "vit" in name:
         model.head = nn.Identity()
-    elif "swin" in name or "convnext" in name:
+    elif "convnext" in name:
         model.head = nn.Identity()  # 🔧 This line was missing
 
     class Wrapper(nn.Module):
@@ -59,7 +59,7 @@ class ZeroCostCandidateGenerator:
 
         self.BACKBONE_NAMES = [
             "resnet18", "efficientnet_b0", "vit_base_patch16_224",
-            "swin_tiny_patch4_window7_224", "convnext_tiny"
+             "convnext_tiny"
         ]
 
         self.backbones = {
@@ -72,14 +72,16 @@ class ZeroCostCandidateGenerator:
     def adapt_input(self, x):
         return self.rgb_adapter(x) if self.rgb_adapter else x
 
-    def get_jacobian_score(self, model, input_tensor):
+    def get_jacobian_score(self, backbone, head, input_tensor):
+        model = nn.Sequential(backbone, head).to(self.device)
         model.eval()
         input_tensor = input_tensor.clone().detach().requires_grad_(True)
         output = model(input_tensor)
         jacobian = torch.autograd.grad(outputs=output.sum(), inputs=input_tensor, create_graph=True)[0]
         return jacobian.norm().item()
-
-    def get_gradnorm_score(self, model, input_tensor, target_tensor):
+    
+    def get_gradnorm_score(self, backbone, head, input_tensor, target_tensor):
+        model = nn.Sequential(backbone, head).to(self.device)
         model.train()
         model.zero_grad()
         output = model(input_tensor)
@@ -129,13 +131,13 @@ class ZeroCostCandidateGenerator:
             input_tensor = self.adapt_input(self.real_input) if not has_adapter(backbone) else self.real_input
 
             feat_dim = self.get_feature_dim(backbone, backbone_name)
-            feats = backbone(input_tensor)
+            
 
-            print(f"[DEBUG] Feature shape for {backbone_name}: {feats.shape}")
+            print(f"[DEBUG] Feature shape for {backbone_name}: {feat_dim}")
 
             head = self.generate_random_head(feat_dim).to(self.device)
-            jac = self.get_jacobian_score(head, feats)
-            grad = self.get_gradnorm_score(head, feats, self.real_target)
+            jac = self.get_jacobian_score(backbone, head,input_tensor)
+            grad = self.get_gradnorm_score(backbone, head, input_tensor, self.real_target)
 
             candidates.append({
                 "backbone": backbone_name,
