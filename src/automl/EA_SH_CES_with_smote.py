@@ -449,7 +449,7 @@ if __name__ == "__main__":
     )
 
     train_set = fix_dataset_transforms(train_set)
-    sample_loader = DataLoader(train_set, batch_size=8, shuffle=True)
+    sample_loader = DataLoader(train_set, batch_size=1, shuffle=True)
     real_input, real_target = next(iter(sample_loader))
 
     # Run Zero-Cost Proxy search (unchanged)
