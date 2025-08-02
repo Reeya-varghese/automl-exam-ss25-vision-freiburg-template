@@ -208,7 +208,7 @@ def create_dataset_with_smote(
             print(f"🔄 Applying {smote_config.get('variant', 'standard')} SMOTE...")
             
             # Create temporary dataset without transforms for SMOTE
-            temp_dataset = dataset_class(root="./data", split='train', download=True, transform=None)
+            temp_dataset = dataset_class(root="./data", split='train', download=False, transform=None)
             
             balanced_dataset = apply_smote_to_dataset(
                 temp_dataset,
