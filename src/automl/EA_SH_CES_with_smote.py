@@ -53,6 +53,24 @@ from smote_balancer import apply_smote_to_dataset, check_class_imbalance, SMOTEB
 # Your existing classes (unchanged)
 logger = logging.getLogger(__name__)
 
+# Add after imports
+import torchvision.transforms as transforms
+
+# Add this function
+def fix_dataset_transforms(dataset):
+    """Ensure all data is converted to tensors"""
+    original_getitem = dataset.__getitem__
+    to_tensor = transforms.ToTensor()
+    
+    def new_getitem(idx):
+        image, label = original_getitem(idx)
+        if hasattr(image, 'mode'):  # PIL Image
+            image = to_tensor(image)
+        return image, label
+    
+    dataset.__getitem__ = new_getitem
+    return dataset
+
 class CarbonGPUTracker:
     """Smart carbon emissions and GPU tracking"""
     
