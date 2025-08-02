@@ -7,7 +7,6 @@ from model import get_backbone_loader
 
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-
 class ZeroCostCandidateGenerator:
     def __init__(self, real_input, real_target, num_candidates=100, top_k=10, num_classes=7):
         self.real_input = real_input.to(DEVICE)
@@ -18,14 +17,13 @@ class ZeroCostCandidateGenerator:
         self.device = DEVICE
         grayscale = self.real_input.shape[1] == 1
 
+        # ✅ Only allowed backbones
         self.BACKBONE_NAMES = ["resnet18", "efficientnet_b0", "vit_base_patch16_224"]
         self.backbones = {
             name: get_backbone_loader(name)(grayscale=grayscale).to(self.device).eval()
             for name in self.BACKBONE_NAMES
         }
-        
 
-    # ------------------ Scoring Functions ------------------ #
     def get_jacobian_score(self, model, input_tensor):
         model.eval()
         input_tensor = input_tensor.requires_grad_(True)
@@ -43,9 +41,9 @@ class ZeroCostCandidateGenerator:
 
     def generate_random_head(self, input_dim):
         hidden_dim = random.choice([
-            [1024, 512],         # 2-layer MLP
-            [2048, 1024, 512],   # 3-layer MLP
-            [2048, 1024]         # simplified but deep
+            [1024, 512],
+            [2048, 1024, 512],
+            [2048, 1024]
         ])
         dropout = random.choice([0.0, 0.1, 0.2])
         use_bn = random.choice([True, False])
@@ -54,34 +52,27 @@ class ZeroCostCandidateGenerator:
         layers = [nn.Flatten()]
         prev_dim = input_dim
 
-        for hidden_dim in hidden_dim:
-            layers.append(nn.Linear(prev_dim, hidden_dim))
+        for hidden in hidden_dim:
+            layers.append(nn.Linear(prev_dim, hidden))
             if use_bn:
-                layers.append(nn.BatchNorm1d(hidden_dim))
+                layers.append(nn.BatchNorm1d(hidden))
             layers.append(activation)
             if dropout > 0:
                 layers.append(nn.Dropout(dropout))
-            prev_dim = hidden_dim
+            prev_dim = hidden
 
-    # Final classification layer
         layers.append(nn.Linear(prev_dim, self.num_classes))
-
         return nn.Sequential(*layers)
 
     def normalize(self, score_list):
         min_val, max_val = min(score_list), max(score_list)
         return [(s - min_val) / (max_val - min_val + 1e-8) for s in score_list]
 
-    
     def extract_features(self, backbone, backbone_name, input_tensor):
         with torch.no_grad():
             if "vit" in backbone_name:
                 features = backbone.forward_features(input_tensor)
-                if features.ndim == 3:
-                    features = features[:, 0, :]  # [CLS] token
-                else:
-                    features = features.mean(dim=1)  # fallback if [CLS] doesn't exist
-                return features
+                return features[:, 0, :] if features.ndim == 3 else features.mean(dim=1)
             elif "efficientnet" in backbone_name:
                 x = backbone.forward_features(input_tensor)
                 return F.adaptive_avg_pool2d(x, 1).reshape(x.size(0), -1)
@@ -92,38 +83,23 @@ class ZeroCostCandidateGenerator:
                 return torch.flatten(x, 1)
             else:
                 raise ValueError(f"Unsupported backbone: {backbone_name}")
+
     def get_feature_dim(self, model, backbone_name):
         model.eval()
-    
-        if "vit" in backbone_name:
-            dummy_input = torch.randn(1, 3, 224, 224).to(self.device)
-            feats = self.extract_features(model, backbone_name, dummy_input)
-            return feats.shape[-1]
-
-        input_channels = self.real_input.shape[1]
-        dummy_input = torch.randn(1, input_channels, 224, 224).to(self.device)
+        dummy_input = torch.randn(1, self.real_input.shape[1], 224, 224).to(self.device)
         feats = self.extract_features(model, backbone_name, dummy_input)
         return feats.shape[-1]
-    
+
     def get_top_k_candidates(self):
         candidates = []
-    
+
         for i in range(self.num_candidates):
             backbone_name = random.choice(self.BACKBONE_NAMES)
-
-            # 🛠️ Patch: expand grayscale images to 3 channels for ViT
-            if "vit" in backbone_name and self.real_input.shape[1] == 1:
-                input_tensor = self.real_input.repeat(1, 3, 1, 1)
-            else:
-                input_tensor = self.real_input
-
+            input_tensor = self.real_input.repeat(1, 3, 1, 1) if "vit" in backbone_name and self.real_input.shape[1] == 1 else self.real_input
             backbone = self.backbones[backbone_name]
             feat_dim = self.get_feature_dim(backbone, backbone_name)
-
             head = self.generate_random_head(feat_dim).to(self.device)
-
             feats = self.extract_features(backbone, backbone_name, input_tensor)
-
             jac = self.get_jacobian_score(head, feats)
             grad = self.get_gradnorm_score(head, feats, self.real_target)
 
@@ -135,7 +111,6 @@ class ZeroCostCandidateGenerator:
                 "id": f"{backbone_name}_{i}"
             })
 
-        # Normalize and score
         jac_norm = self.normalize([c["jacobian_score"] for c in candidates])
         grad_norm = self.normalize([c["gradnorm_score"] for c in candidates])
         for i, c in enumerate(candidates):
