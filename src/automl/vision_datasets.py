@@ -143,6 +143,10 @@ class BaseVisionDataset(VisionDataset):
         return len(self._image_files)
 
 
+    @property
+    def targets(self):
+        return self._labels
+
 class EmotionsDataset(BaseVisionDataset):
     """ Emotions Dataset.
 

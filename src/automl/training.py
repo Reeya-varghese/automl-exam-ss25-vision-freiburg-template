@@ -7,6 +7,7 @@ from torch import nn, optim
 from torch.utils.data import DataLoader
 from sklearn.metrics import accuracy_score
 import random
+from sklearn.model_selection import StratifiedShuffleSplit
 import optuna
 from model import get_model, get_transforms
 from utils import calculate_mean_std
@@ -68,6 +69,7 @@ class AutoML:
         mean, std = calculate_mean_std(dataset_class)
         self.mean, self.std = mean, std  # Save for predict usage
 
+        
 #        Load raw dataset without transforms
         raw_dataset = dataset_class(
             root="./data",
@@ -75,20 +77,22 @@ class AutoML:
             download=True,
             transform=None
         )
-    
+        targets = raw_dataset.targets
+        np.random.seed(self.seed)
         # Apply same transform before splitting
         if subsample is not None:
             indices = np.random.choice(len(raw_dataset), subsample, replace=False)
+            sub_targets = [targets[i] for i in indices]
         else:
             indices = list(range(len(raw_dataset)))
-      
-        np.random.seed(self.seed)
-        np.random.shuffle(indices)
-        split = int(0.8 * len(indices))
-        train_indices = indices[:split]
-        val_indices = indices[split:]
-        train_raw = Subset(raw_dataset, train_indices)
-        val_raw = Subset(raw_dataset, val_indices)
+            sub_targets = targets
+
+        sss = StratifiedShuffleSplit(n_splits=1, test_size=0.2, random_state=self.seed)
+        train_idx, val_idx = next(sss.split(np.zeros(len(indices)), sub_targets))
+
+        train_raw = Subset(raw_dataset, train_idx)
+        val_raw = Subset(raw_dataset, val_idx)
+
 
         if self.use_augmentation:
             n = trial.suggest_int("randaug_n", 1, 3) if trial else 2
