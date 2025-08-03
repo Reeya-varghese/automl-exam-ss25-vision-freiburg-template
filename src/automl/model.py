@@ -7,10 +7,13 @@ def get_device():
     return 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def get_transforms(mean, std, phase="train", backbone_name="resnet18"):
+    is_vit = "vit" in backbone_name.lower()
     tf = [transforms.Resize((224, 224))]
     if phase == "train":
         tf += [transforms.RandomRotation(15), transforms.RandomHorizontalFlip()]
     tf.append(transforms.ToTensor())
+    if is_vit:
+        tf.append(transforms.Lambda(lambda x: x.repeat(3, 1, 1) if x.shape[0] == 1 else x))
     tf.append(transforms.Normalize(mean, std))
     return transforms.Compose(tf)
 
@@ -36,9 +39,6 @@ def load_efficientnet_b0(grayscale=False):
 
 def load_vit(grayscale=False):
     model = timm.create_model('vit_base_patch16_224', pretrained=True)
-    if grayscale:
-        conv = nn.Conv2d(1, 3, kernel_size=3, stride=1, padding=1, bias=False)
-        model.patch_embed.proj = nn.Sequential(conv, model.patch_embed.proj)
     return model
 
 def get_backbone_loader(backbone_name):
