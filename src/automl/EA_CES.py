@@ -1,20 +1,9 @@
 
 import logging
 import warnings
+import os
 
-# Silence CodeCarbon log messages
-logging.getLogger("codecarbon").setLevel(logging.CRITICAL)
-
-# Silence CodeCarbon runtime warnings
-warnings.filterwarnings("ignore", module="codecarbon")
-
-# Optional: Silence specific NVML GPU energy errors
-try:
-    from codecarbon.core import gpu
-    gpu._GPU._get_total_energy_consumption = lambda self: 0.0
-except Exception:
-    pass  # Ignore if module layout changes or is unavailable
-
+import contextlib
 import argparse
 from pathlib import Path
 from typing import Any, Tuple
@@ -24,7 +13,6 @@ import numpy as np
 from torch.utils.data import DataLoader
 from sklearn.metrics import accuracy_score, f1_score
 import threading
-from codecarbon import EmissionsTracker
 
 from Zero_cost import ZeroCostCandidateGenerator
 from training import AutoML
@@ -41,7 +29,9 @@ from utils import calculate_mean_std
 from vision_datasets import FashionDataset, FlowersDataset, EmotionsDataset, SkinCancerDataset
 from torch.utils.data import random_split
 
-
+warnings.filterwarnings("ignore")
+logging.getLogger("codecarbon").setLevel(logging.ERROR)
+logging.getLogger("codecarbon").propagate = False
 
 # ---------------------------------------------
 logger = logging.getLogger(__name__)
@@ -66,12 +56,14 @@ class CarbonGPUTracker:
 
         # Initialize CodeCarbon tracker
         tracker_name = f"{self.project_name}_trial_{trial_id}" if trial_id else self.project_name
-        self.emissions_tracker = EmissionsTracker(
-            project_name=tracker_name,
-            measure_power_secs=15,
-            save_to_file=True,
-            log_level="WARNING"
-        )
+        with contextlib.redirect_stdout(open(os.devnull, 'w')):
+            from codecarbon import EmissionsTracker
+            self.emissions_tracker = EmissionsTracker(
+                project_name=tracker_name,
+                measure_power_secs=15,
+                save_to_file=True,
+                log_level="error" 
+            )
         self.emissions_tracker.start()
 
         # Reset GPU memory stats
