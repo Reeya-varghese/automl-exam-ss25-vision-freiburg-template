@@ -25,10 +25,12 @@ from utils import calculate_mean_std
 from vision_datasets import FashionDataset, FlowersDataset, EmotionsDataset, SkinCancerDataset
 from torch.utils.data import random_split
 
+import logging
 import warnings
 
-# Suppress only CodeCarbon warnings
-warnings.filterwarnings("ignore")
+# Suppress CodeCarbon warnings and logs
+logging.getLogger("codecarbon").setLevel(logging.CRITICAL)
+warnings.filterwarnings("ignore", module="codecarbon")
 
 # ---------------------------------------------
 logger = logging.getLogger(__name__)
