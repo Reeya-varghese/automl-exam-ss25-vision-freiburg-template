@@ -58,7 +58,6 @@ class AutoML:
         ]
         self._transform = transforms.Compose(tfs)
 
-        # 2000 sample subset, 80/20 split
         
         dataset = dataset_class(root="./data", split="train", download=True, transform=self._transform)
         if subsample is not None:
@@ -71,16 +70,16 @@ class AutoML:
         val_loader = DataLoader(val_set, batch_size=self.batch_size, shuffle=False)
 
         model = get_resnet_model(
-            self.backbone,  # fixed backbone
+            self.backbone,
             num_classes=dataset_class.num_classes,
-            num_layers_to_freeze=self.num_layers_to_freeze,   # fully fine-tuned
+            num_layers_to_freeze=self.num_layers_to_freeze,  
             grayscale=(dataset_class.channels == 1)
         ).to(device)
 
         criterion = nn.CrossEntropyLoss()
         optimizer = optim.Adam(model.parameters(), lr=self.lr) if self.optimizer_name == "adam" else optim.SGD(model.parameters(), lr=self.lr, momentum=0.9)
-        
-        # History for plotting
+   
+
         self._history = {"loss": [], "acc": [], "val_acc": []}
 
         model.train()
@@ -103,7 +102,7 @@ class AutoML:
             self._history["loss"].append(epoch_loss)
             self._history["acc"].append(epoch_acc)
 
-            # Validation
+           
             val_preds = []
             val_targets = []
             model.eval()
@@ -170,7 +169,7 @@ def optuna_objective(trial, dataset_class, seed=42):
         optimizer_name=optimizer_name,
         trial=trial
     )
-    automl.fit(dataset_class, subsample=2000)  # Use a fixed subsample for all trials
+    automl.fit(dataset_class, subsample=2000)  
     preds, labels = automl.predict(dataset_class)
     acc = accuracy_score(labels, preds) if not np.isnan(labels).any() else 0
     trial.set_user_attr("history", automl._history)

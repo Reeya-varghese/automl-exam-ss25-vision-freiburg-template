@@ -16,7 +16,6 @@ from CO2emission import (
     get_enhanced_reference_points,
     get_progressive_config
 )
-
 from Zero_cost import ZeroCostCandidateGenerator
 from training import AutoML
 import optuna
@@ -30,14 +29,11 @@ from Plots import (
 from model import get_transforms
 from utils import calculate_mean_std
 from vision_datasets import FashionDataset, FlowersDataset, EmotionsDataset, SkinCancerDataset
-from torch.utils.data import random_split
 import logging
 import warnings
-
-# Suppress all warnings globally
+# Suppress warnings
 warnings.filterwarnings("ignore")
 
-# Silence codecarbon loggers
 logging.getLogger("codecarbon").setLevel(logging.ERROR)
 logging.getLogger("codecarbon").propagate = False
 
@@ -54,18 +50,25 @@ def optuna_objective(
     enable_progressive: bool = True,
     total_trials: int = 10 
     ) -> Tuple[float, float, float,float, float]:
+    """
+    Objective function for Optuna multi-objective optimization.
+    Returns: accuracy, f1, training time, adjusted carbon, peak memory.
+    """
+    # Map candidate ID to corresponding backbone and head
     candidate_lookup = {
             f"{c['backbone']}_{i}": (c['backbone'], c['head'])
             for i, c in enumerate(top_k_candidates)
         }
+    #
     STATIC_CANDIDATE_IDS = list(candidate_lookup.keys())
-    STATIC_BATCH_SIZE = [32, 16]
+    STATIC_BATCH_SIZE = [64, 32, 16]
+
+    # Tracking Crabon emissions and GPU usage
     tracker = CarbonGPUTracker(project_name=f"trial_{trial.number}")
     tracker.start_tracking(trial_id=trial.number)
 
     try:
-        # Your existing hyperparameter suggestions (unchanged)
-        
+      
         lr = trial.suggest_float('lr', 1e-4, 1e-2, log=True)
 
         progressive_config = get_progressive_config(trial.number, total_trials, enable_progressive)
@@ -75,10 +78,10 @@ def optuna_objective(
             raise optuna.TrialPruned(f"Invalid candidate_id: {candidate_id}")
         backbone, head = candidate_lookup[candidate_id]
 
-# now apply progressive constraint manually
+
         if progressive_config['prefer_efficient_arch']:
             efficiency = get_architecture_efficiency_weight(backbone)
-            if efficiency < 0.6:
+            if efficiency < 0.8:
                 raise optuna.TrialPruned(f"Backbone {backbone} below efficiency threshold.")        
    
         efficiency_weight = get_architecture_efficiency_weight(backbone)
@@ -91,14 +94,12 @@ def optuna_objective(
         if progressive_config['min_batch_size'] > 16 and batch_size == 16:
             raise optuna.TrialPruned("Batch size 16 disallowed by progressive config.")
 
-        epochs = trial.suggest_int('epochs',8, progressive_config['max_epochs'])
+        epochs = trial.suggest_int('epochs',5, progressive_config['max_epochs'])
         optimizer = trial.suggest_categorical('optimizer', ['adam', 'sgd'])
-        use_augmentation = trial.suggest_categorical('use_augmentation', [True])
+        use_augmentation = trial.suggest_categorical('use_augmentation', [True, False])
 
         
       
-        
-        # Your existing AutoML training (unchanged)
         automl = AutoML(
             seed=seed,
             num_layers_to_freeze=0,
@@ -189,14 +190,13 @@ if __name__ == "__main__":
      
     grayscale = dataset_class.channels == 1
     default_backbone = "resnet18" if grayscale else "vit_base_patch16_224"
-    # Load raw dataset without transforms
+   
     raw_dataset = dataset_class(root="./data", split='train', download=True, transform=None)
 
-    # Compute and show original class distribution
     class_names = raw_dataset.classes if hasattr(raw_dataset, "classes") else None
     show_class_distribution_cli(raw_dataset, class_names, title="Before Augmentation")
 
-# Prepare dataset with on-the-fly RandAug for minority classes
+
     augmented_dataset, sampler = prepare_augmented_balanced_dataset(
         dataset=raw_dataset,
         image_size=(224, 224),
@@ -207,12 +207,12 @@ if __name__ == "__main__":
         std=std
     )
 
-# Get sample batch for ZC proxy
+
     sample_loader = DataLoader(augmented_dataset, sampler=sampler, batch_size=8)
     real_input, real_target = next(iter(sample_loader))
 
 
-    # Run Zero-Cost Proxy search
+
     zcc = ZeroCostCandidateGenerator(real_input, real_target, num_candidates=100, top_k=10, num_classes=dataset_class.num_classes)
     top_k_candidates = zcc.get_top_k_candidates()
     candidate_lookup = {f"{c['backbone']}_{i}": (c['backbone'], c['head']) for i, c in enumerate(top_k_candidates)}
@@ -225,11 +225,11 @@ if __name__ == "__main__":
       f"GradNorm: {c['gradnorm_score']:.4f}, "
       f"Total: {c['combined_score']:.4f}")
 
-    # Reference points for NSGAIII
+
     reference_points = get_enhanced_reference_points()
 
 
-    # GA + SH Hyperparameter Optimization
+
     opsampler = NSGAIIISampler(
         population_size=50,
         mutation_prob=0.15,
@@ -267,7 +267,8 @@ if __name__ == "__main__":
             f"Carbon: {actual_carbon:.4f}kg (adj: {t.values[3]:.4f}), "
             f"GPU: {t.values[4]:.2f}GB, "
             f"Eff: {efficiency:.1f} | {t.params}")
-     # NEW: Enhanced solution analysis
+    
+    
     print(f"\n🎯 SOLUTION ANALYSIS:")
     print("="*60)
 
@@ -332,7 +333,7 @@ if __name__ == "__main__":
         print(f"No test split for dataset '{dataset_class.__name__}'")
     print("✅AutoML training completed successfully!")
     
-    # NEW: Enhanced carbon summary
+    
     total_emissions = global_metrics['emissions_kg'] + final_metrics['emissions_kg']
     efficiency_used = get_architecture_efficiency_weight(backbone)
     carbon_saved_estimate = total_emissions * (1 - efficiency_used) if efficiency_used < 1.0 else 0
@@ -343,7 +344,7 @@ if __name__ == "__main__":
     print(f"   Final Training: {final_metrics['emissions_kg']:.4f} kg")
     print(f"   Architecture Efficiency: {efficiency_used:.1f} (1.0 = most efficient)")
     print(f"   Estimated Carbon Saved: {carbon_saved_estimate:.4f} kg CO2eq")
-    print(f"🖥️ Peak GPU Memory: {max(global_metrics['peak_gpu_memory_gb'], final_metrics['peak_gpu_memory_gb']):.2f} GB")
+    print(f"   Peak GPU Memory: {max(global_metrics['peak_gpu_memory_gb'], final_metrics['peak_gpu_memory_gb']):.2f} GB")
     
     
     # Save Optuna plots

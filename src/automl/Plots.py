@@ -1,4 +1,4 @@
-# utils/visualize.py
+
 import matplotlib.pyplot as plt
 from collections import Counter
 from pathlib import Path
@@ -13,7 +13,7 @@ def show_class_distribution_cli(dataset, class_names=None, title="Class Distribu
         name = class_names[cls] if class_names else str(cls)
         print(f"   {name:<15}: {class_counts[cls]} samples")
 
-    # Plot
+   
     classes = list(class_counts.keys())
     counts = [class_counts[c] for c in classes]
     names = class_names if class_names else [str(c) for c in classes]
@@ -26,11 +26,11 @@ def show_class_distribution_cli(dataset, class_names=None, title="Class Distribu
     plt.xticks(rotation=45)
     plt.tight_layout()
 
-    # ✅ Ensure "plots/" directory exists
+  
     output_dir = Path("./Plots")
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # ✅ Save the plot
+  
     plot_filename = output_dir / f"{title.replace(' ', '_').lower()}.png"
     plt.savefig(plot_filename)
     plt.close()
@@ -45,7 +45,7 @@ def save_carbon_gpu_plots(study, filename_prefix="optuna"):
     gpu = [t.values[2] for t in trials]
     trial_nums = [t.number for t in trials]
 
-    # Carbon plot
+    # Carbon Plot
     plt.figure()
     plt.bar(trial_nums, emissions, color='green')
     plt.xlabel("Trial")
@@ -66,7 +66,7 @@ def save_carbon_gpu_plots(study, filename_prefix="optuna"):
 
 def save_optuna_visualizations(study, prefix=""):
     try:
-        # Optimization history
+     
         fig = optuna.visualization.plot_optimization_history(
             study,
             target=lambda t: t.values[0],
@@ -124,7 +124,7 @@ def save_accuracy_histogram(study, path="accuracy_hist_EA.png"):
 
 def save_metric_curves(study, acc_path="trials_accuracy_EA_SH.png", loss_path="trials_loss_EA_SH.png"):
     try:
-        # Accuracy Curves
+   
         plt.figure(figsize=(10, 5))
         for t in study.trials:
             if "history" in t.user_attrs:
@@ -138,7 +138,7 @@ def save_metric_curves(study, acc_path="trials_accuracy_EA_SH.png", loss_path="t
         plt.close()
         print(f"✅ Saved: {acc_path}")
 
-        # Loss Curves
+    
         plt.figure(figsize=(10, 5))
         for t in study.trials:
             if "history" in t.user_attrs:

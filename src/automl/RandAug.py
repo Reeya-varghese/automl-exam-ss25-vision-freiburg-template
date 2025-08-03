@@ -42,6 +42,7 @@ class RandAugmentFixed:
         return img
 
     def auto_contrast(self, img, _): return ImageOps.autocontrast(img)
+
     def equalize(self, img, _): return ImageOps.equalize(img)
 
     def rotate(self, img, level):
@@ -60,6 +61,7 @@ class RandAugmentFixed:
         return Image.fromarray(img_np.astype(np.uint8))
 
     def brightness(self, img, level): return ImageEnhance.Brightness(img).enhance(float_parameter(level, 1.8) + 0.1)
+
     def sharpness(self, img, level): return ImageEnhance.Sharpness(img).enhance(float_parameter(level, 1.8) + 0.1)
     
     def shear_x(self, img, level):
@@ -105,19 +107,19 @@ class AugmentedDataset(Dataset):
         return img, label
 
 
-def weighted_sampler(dataset, class_counts):
+def WeightedSampler(dataset, class_counts):
     targets = [label for _, label in dataset]
     weights = [1.0 / class_counts[t] for t in targets]
     return WeightedRandomSampler(weights, num_samples=len(weights), replacement=True)
 
-def prepare_augmented_balanced_dataset(
+def AugmentDataset(
     dataset, image_size=(224, 224), n=2, m=9, mean=(0.5,), std=(0.5,), grayscale=False, backbone_name="resnet18"
 ):
     class_counts = compute_class_distribution(dataset)
 
     
     train_transform = transforms.Compose([
-        RandAugmentFixed(n=n, m=m),  # strong augmentations applied uniformly
+        RandAugmentFixed(n=n, m=m),  
         transforms.Resize(image_size),
         transforms.ToTensor(),
         transforms.Normalize(mean, std),
@@ -125,6 +127,6 @@ def prepare_augmented_balanced_dataset(
 
 
     dataset_aug = AugmentedDataset(dataset,train_transform)
-    sampler = weighted_sampler(dataset_aug, class_counts)
+    sampler = WeightedSampler(dataset_aug, class_counts)
 
     return dataset_aug, sampler

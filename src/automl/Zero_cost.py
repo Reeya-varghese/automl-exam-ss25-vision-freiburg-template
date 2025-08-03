@@ -14,8 +14,7 @@ def wrap_backbone(name, model):
         model.classifier = nn.Identity()
     elif "vit" in name:
         model.head = nn.Identity()
-    elif "convnext" in name:
-        model.head = nn.Identity()  # 🔧 This line was missing
+
 
     class Wrapper(nn.Module):
         def __init__(self, m):
@@ -41,8 +40,6 @@ def wrap_backbone(name, model):
     return Wrapper(model)
 
 
-
-
 def has_adapter(model):
     return any(isinstance(m, GrayscaleToRGBAdapter) for m in model.modules())
 
@@ -59,7 +56,6 @@ class ZeroCostCandidateGenerator:
 
         self.BACKBONE_NAMES = [
             "resnet18", "efficientnet_b0", "vit_base_patch16_224",
-             "convnext_tiny"
         ]
 
         self.backbones = {
@@ -133,8 +129,6 @@ class ZeroCostCandidateGenerator:
             feat_dim = self.get_feature_dim(backbone, backbone_name)
             
 
-            #print(f"[DEBUG] Feature shape for {backbone_name}: {feat_dim}")
-
             head = self.generate_random_head(feat_dim).to(self.device)
             jac = self.get_jacobian_score(backbone, head,input_tensor)
             grad = self.get_gradnorm_score(backbone, head, input_tensor, self.real_target)
@@ -147,7 +141,6 @@ class ZeroCostCandidateGenerator:
                 "id": f"{backbone_name}_{i}"
             })
 
-        # Normalize and rank
         jac_norm = self.normalize([c["jacobian_score"] for c in candidates])
         grad_norm = self.normalize([c["gradnorm_score"] for c in candidates])
 

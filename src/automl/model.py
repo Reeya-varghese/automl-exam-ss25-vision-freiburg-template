@@ -33,12 +33,12 @@ def get_transforms(mean, std, phase="train", backbone_name="resnet18"):
 
     return transforms.Compose(tf)
 
-# ---------------------- Backbone Loaders ----------------------
+#Backbone loaders
+
 def load_resnet18(grayscale=False): return models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
 def load_efficientnet_b0(grayscale=False): return timm.create_model('efficientnet_b0', pretrained=True)
 def load_vit(grayscale=False): return timm.create_model('vit_base_patch16_224', pretrained=True)
 
-def load_convnext(grayscale=False): return timm.create_model('convnext_tiny', pretrained=True)
 
 
 def get_backbone_loader(name):
@@ -46,17 +46,15 @@ def get_backbone_loader(name):
         "resnet18": load_resnet18,
         "efficientnet_b0": load_efficientnet_b0,
         "vit_base_patch16_224": load_vit,
-   
-        "convnext_tiny": load_convnext,
     }[name]
 
 
-# ---------------------- Model Builder ----------------------
+#Model Builder
 def get_model(backbone_name, num_classes, grayscale=False, custom_head=None):
     device = get_device()
     base = get_backbone_loader(backbone_name)().to(device)
     
-    if grayscale and ("vit" in backbone_name or "convnext" in backbone_name):
+    if grayscale :
         adapter = GrayscaleToRGBAdapter().to(device)
     else:
         adapter = nn.Identity()
@@ -82,15 +80,7 @@ def get_model(backbone_name, num_classes, grayscale=False, custom_head=None):
             LambdaLayer(lambda x: base.forward_features(x).mean(dim=1))
         )
 
-    elif "convnext" in backbone_name:
-        base.head = nn.Identity() 
-        features_dim = base.num_features
-        extractor = nn.Sequential(
-            LambdaLayer(lambda x: base.forward_features(x)),
-        nn.AdaptiveAvgPool2d((1, 1)),
-        nn.Flatten()
-    )
-
+  
     else:
         raise ValueError(f"Unsupported backbone: {backbone_name}")
 

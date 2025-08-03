@@ -10,10 +10,10 @@ import random
 import optuna
 from model import get_model, get_transforms
 from utils import calculate_mean_std
-from torch.utils.data import Subset, random_split
+from torch.utils.data import Subset
 from RandAug import prepare_augmented_balanced_dataset
 from DAC import DynamicAdjustmentController
-# ---------------------------------------------
+
 logger = logging.getLogger(__name__)
 
 class AutoML:
@@ -91,22 +91,12 @@ class AutoML:
                 backbone_name=self.backbone
             )
 
-        else:
-            # Fallback to basic transform
-            self._transform = get_transforms(mean, std, phase="train", backbone_name=self.backbone)
-            dataset = dataset_class(
-            root="./data",
-            split='train',
-            download=True,
-            transform=self._transform
-        )
-
         # Apply same transform before splitting
         if subsample is not None:
             indices = np.random.choice(len(dataset), subsample, replace=False)
             dataset = Subset(dataset, indices)
 
-# Manual split
+        # Split dataset into training and validation sets
         total_indices = list(range(len(dataset)))
         np.random.seed(self.seed)
         np.random.shuffle(total_indices)
@@ -114,12 +104,11 @@ class AutoML:
         train_indices = total_indices[:split]
         val_indices = total_indices[split:]
 
-# Split raw dataset before augmentation
         train_raw = Subset(raw_dataset, train_indices)
         val_set = Subset(dataset, val_indices)
         self._val_set = val_set
 
-# Augment only training split
+        # Augment only training split
         train_augmented, sampler = prepare_augmented_balanced_dataset(
             dataset=train_raw,
             image_size=(224, 224),
@@ -146,23 +135,23 @@ class AutoML:
             optimizer = optim.Adam(model.parameters(), lr=self.lr)
         elif self.optimizer:
             optimizer = optim.SGD(model.parameters(), lr=self.lr, momentum=0.9)
-        if dataset_class.__name__ == "SkinCancerDataset":
-            print("[DEBUG] DAC ENABLED")
+
+        # Enable DAC for datasets    
+        if dataset_class.__name__ == ["SkinCancerDataset","EmotionsDataset","FlowersDataset","FashionDataset"]:
             self.dac = DynamicAdjustmentController(optimizer, initial_lr=self.lr)
         
+        # Training Loop
         criterion = nn.CrossEntropyLoss()
-
         self._history = {"loss": [], "acc": [], "val_loss": [], "val_acc": []}
-        
         best_val_acc = 0.0
-        
         best_model_state = None
-
         model.train()
+
         for epoch in range(self.epochs):
             loss_per_batch = []
             all_preds = []
             all_targets = []
+
             for data, target in train_loader:
                 data, target = data.to(self.device), target.to(self.device)
                 optimizer.zero_grad()
@@ -170,9 +159,11 @@ class AutoML:
                 loss = criterion(output, target)
                 loss.backward()
                 optimizer.step()
+
                 loss_per_batch.append(loss.item())
                 all_preds.extend(torch.argmax(output, 1).cpu().numpy())
                 all_targets.extend(target.cpu().numpy())
+
             epoch_loss = np.mean(loss_per_batch)
             epoch_acc = accuracy_score(all_targets, all_preds)
             self._history["loss"].append(epoch_loss)
@@ -181,6 +172,8 @@ class AutoML:
             val_loss_per_batch = []
             val_preds = []
             val_targets = []
+
+            # Validation Loop
             model.eval()
             with torch.no_grad():
                 for data, target in val_loader:
@@ -188,9 +181,11 @@ class AutoML:
                     output = model(data)
                     loss = criterion(output, target)
                     pred = torch.argmax(output, 1).cpu().numpy()
+
                     val_loss_per_batch.append(loss.item())
                     val_preds.extend(pred)
                     val_targets.extend(target.cpu().numpy())
+
             val_loss = np.mean(val_loss_per_batch)
             val_acc = accuracy_score(val_targets, val_preds)
         
@@ -210,6 +205,9 @@ class AutoML:
                 best_model_state = deepcopy(model.state_dict())
                 
             model.train()
+
+        # Save the Best Model State
+
         if best_model_state:
             model.load_state_dict(best_model_state)
             model = model.to(self.device) 
@@ -225,8 +223,9 @@ class AutoML:
 
 
     def predict_on(self, dataset_class: Any, split="test") -> Tuple[np.ndarray, np.ndarray]:
-        self._model= self._model.to(self.device).eval()
+        # Predict Labels on Test set.
 
+        self._model= self._model.to(self.device).eval()
         mean, std = calculate_mean_std(dataset_class)
         test_transform = get_transforms(mean, std, phase="test", backbone_name=self.backbone)
 
@@ -254,6 +253,7 @@ class AutoML:
         return predictions, labels
     
     def predict(self, dataset_class: Any) -> np.ndarray:
+        
         preds, labels= self.predict_on(dataset_class, split="test")
 
         return preds, labels
