@@ -87,19 +87,16 @@ class AutoML:
         split = int(0.8 * len(indices))
         train_indices = indices[:split]
         val_indices = indices[split:]
+        train_raw = Subset(raw_dataset, train_indices)
+        val_raw = Subset(raw_dataset, val_indices)
 
         if self.use_augmentation:
             n = trial.suggest_int("randaug_n", 1, 3) if trial else 2
             m = trial.suggest_int("randaug_m", 5, 15) if trial else 9
 
         
-            train_dataset = AugmentDataset(
-                dataset=dataset_class(
-                    root="./data",
-                    split="train",
-                    transform=None,  # AugmentDataset will handle transform
-                    download=False
-                ),
+            train_dataset, sampler = AugmentDataset(
+                dataset=train_raw,
                 image_size=(224, 224),
                 grayscale=(dataset_class.channels == 1),
                 n=n,
@@ -108,32 +105,23 @@ class AutoML:
                 std=std,
                 backbone_name=self.backbone
             )
-            train_set = Subset(train_dataset, train_indices)
-            sampler = train_dataset[1] if isinstance(train_dataset, tuple) else None
-
+           
         else:
             train_transform = get_transforms(mean, std, phase="train", backbone_name=self.backbone)
-            train_dataset = dataset_class(
-                root="./data",
-                split="train",
-                transform=train_transform,
-                download=False
-            )
-            train_set = Subset(train_dataset, train_indices)
+            train_dataset = deepcopy(train_raw)
+            train_dataset.dataset.transform = train_transform
             sampler = None
+
         val_transform = get_transforms(mean, std, phase="val", backbone_name=self.backbone)
-        val_dataset = dataset_class(
-            root="./data",
-            split="train",
-            transform=val_transform,
-            download=False
-        )
-        val_set = Subset(val_dataset, val_indices)
-        self._val_set = val_set
+        val_set = deepcopy(val_raw)
+        val_set.dataset.transform = val_transform
+
+        
 
 # Dataloaders
-        train_loader = DataLoader(train_set, batch_size=self.batch_size, shuffle=(sampler is None), sampler=sampler)
+        train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=(sampler is None), sampler=sampler)
         val_loader = DataLoader(val_set, batch_size=self.batch_size, shuffle=False)
+        self._val_set = val_set
 
         model = get_model(
             self.backbone,
@@ -144,9 +132,10 @@ class AutoML:
 
         if self.optimizer == 'adam':
             optimizer = optim.Adam(model.parameters(), lr=self.lr)
-        elif self.optimizer:
+        elif self.optimizer == 'sgd':
             optimizer = optim.SGD(model.parameters(), lr=self.lr, momentum=0.9)
-
+        else:
+            raise ValueError(f"Unsupported optimizer: {self.optimizer}")
         # Enable DAC for datasets    
         if dataset_class.__name__ in ["SkinCancerDataset","EmotionsDataset","FlowersDataset","FashionDataset"]:
             self.dac = DynamicAdjustmentController(optimizer, initial_lr=self.lr)

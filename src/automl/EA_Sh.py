@@ -91,12 +91,12 @@ def optuna_objective(
      
         batch_size = trial.suggest_categorical('batch_size', STATIC_BATCH_SIZE)
 
-        if progressive_config['min_batch_size'] > 16 and batch_size == 16:
-            raise optuna.TrialPruned("Batch size 16 disallowed by progressive config.")
+        #if progressive_config['min_batch_size'] > 16 and batch_size == 16:
+         #   raise optuna.TrialPruned("Batch size 16 disallowed by progressive config.")
 
         epochs = trial.suggest_int('epochs',8, progressive_config['max_epochs'])
         optimizer = trial.suggest_categorical('optimizer', ['adam', 'sgd'])
-        use_augmentation = trial.suggest_categorical('use_augmentation', [True, False])
+        use_augmentation = trial.suggest_categorical('use_augmentation', [True])
 
         
       
