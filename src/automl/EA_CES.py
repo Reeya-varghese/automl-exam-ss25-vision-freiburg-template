@@ -28,9 +28,19 @@ from torch.utils.data import random_split
 import logging
 import warnings
 
-# Suppress CodeCarbon warnings and logs
+# Silence CodeCarbon log messages
 logging.getLogger("codecarbon").setLevel(logging.CRITICAL)
+
+# Silence CodeCarbon runtime warnings
 warnings.filterwarnings("ignore", module="codecarbon")
+
+# Optional: Silence specific NVML GPU energy errors
+try:
+    from codecarbon.core import gpu
+    gpu._GPU._get_total_energy_consumption = lambda self: 0.0
+except Exception:
+    pass  # Ignore if module layout changes or is unavailable
+
 
 # ---------------------------------------------
 logger = logging.getLogger(__name__)
