@@ -14,6 +14,11 @@ from automl.utils import calculate_mean_std
 logger = logging.getLogger(__name__)
 
 class AutoML:
+    """
+    Automated Machine Learning class for image classification using multiple backbone models.
+    
+    Simplified version for carbon emission tracking without pruning constraints.
+    """
     def __init__(
         self,
         seed: int,
@@ -26,6 +31,20 @@ class AutoML:
         num_layers_to_freeze: int = 0,
         optimizer_name: str = "adam",
     ) -> None:
+        
+        """
+        Initialize AutoML instance
+        
+        Args:
+            seed: Random seed for reproducibility
+            lr: Learning rate for optimizer
+            batch_size: Batch size for training and validation
+            epochs: Number of training epochs
+            use_augmentation: Whether to apply data augmentation
+            backbone: Backbone architecture (e.g., 'resnet18', 'resnet50')
+            optimizer_name: Optimizer type ('adam' or 'sgd')
+            trial: Optuna trial object for hyperparameter optimization
+        """
         self.seed = seed
         self.lr = lr
         self.backbone = backbone
@@ -39,6 +58,16 @@ class AutoML:
         self._model: nn.Module | None = None
 
     def fit(self, dataset_class: any, subsample: int = None) -> "AutoML":
+        """
+        Train the model on the given dataset.
+        
+        Args:
+            dataset_class: Dataset class to train on
+            subsample: Number of samples to use for training (None for full dataset)
+            
+        Returns:
+            Self for method chaining
+        """
         random.seed(self.seed)
         np.random.seed(self.seed)
         torch.manual_seed(self.seed)
@@ -58,8 +87,7 @@ class AutoML:
         ]
         self._transform = transforms.Compose(tfs)
 
-        # 2000 sample subset, 80/20 split
-        
+        # Dataset preparation
         dataset = dataset_class(root="./data", split="train", download=True, transform=self._transform)
         if subsample is not None:
             indices = np.random.choice(len(dataset), subsample, replace=False)
@@ -71,9 +99,9 @@ class AutoML:
         val_loader = DataLoader(val_set, batch_size=self.batch_size, shuffle=False)
 
         model = get_resnet_model(
-            self.backbone,  # fixed backbone
+            self.backbone,
             num_classes=dataset_class.num_classes,
-            num_layers_to_freeze=self.num_layers_to_freeze,   # fully fine-tuned
+            num_layers_to_freeze=self.num_layers_to_freeze,
             grayscale=(dataset_class.channels == 1)
         ).to(device)
 
@@ -117,11 +145,11 @@ class AutoML:
             val_acc = accuracy_score(val_targets, val_preds)
             self._history["val_acc"].append(val_acc)
 
+            # Standard trial reporting (no pruning)
             if self.trial is not None:
                 self.trial.report(val_acc, epoch)
-                if self.trial.should_prune():
-                    self.trial.set_user_attr("history", self._history)
-                    raise optuna.TrialPruned()
+                # REMOVED: Pruning logic to allow all trials to complete
+                
             logger.info(f"Epoch {epoch + 1}, Loss: {epoch_loss:.4f}, Acc: {epoch_acc:.4f}, Val Acc: {val_acc:.4f}")
             print(f"Epoch {epoch + 1}, Loss: {epoch_loss:.4f}, Acc: {epoch_acc:.4f}, Val Acc: {val_acc:.4f}")
 
@@ -153,14 +181,26 @@ class AutoML:
         return predictions, labels
 
 def optuna_objective(trial, dataset_class, seed=42):
+    """
+    Standard Optuna objective function for hyperparameter optimization.
+    
+    Args:
+        trial: Optuna trial object
+        dataset_class: Dataset class to optimize on
+        seed: Random seed for reproducibility
+        
+    Returns:
+        Test accuracy score
+    """
     lr = trial.suggest_float('lr', 1e-4, 1e-2, log=True)
     batch_size = trial.suggest_categorical('batch_size', [32, 64])
     optimizer_name = trial.suggest_categorical('optimizer', ['adam', 'sgd'])
-    backbone = "resnet18"  
+    backbone = "resnet18"   # Default backbone 
     use_augmentation = True
     epochs = 8  
+    
     automl = AutoML(
-         seed=seed,
+        seed=seed,
         num_layers_to_freeze=0,
         lr=lr,
         use_augmentation=use_augmentation,
@@ -175,4 +215,3 @@ def optuna_objective(trial, dataset_class, seed=42):
     acc = accuracy_score(labels, preds) if not np.isnan(labels).any() else 0
     trial.set_user_attr("history", automl._history)
     return acc
-
