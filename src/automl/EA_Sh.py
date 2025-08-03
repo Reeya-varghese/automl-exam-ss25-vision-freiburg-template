@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 from sklearn.metrics import accuracy_score, f1_score
 from Plots import show_class_distribution_cli
 from collections import namedtuple
-from RandAug import prepare_augmented_balanced_dataset, compute_class_distribution
+from RandAug import AugmentDataset, compute_class_distribution
 from CO2emission import (
     CarbonGPUTracker,
     get_architecture_efficiency_weight,
@@ -94,7 +94,7 @@ def optuna_objective(
         if progressive_config['min_batch_size'] > 16 and batch_size == 16:
             raise optuna.TrialPruned("Batch size 16 disallowed by progressive config.")
 
-        epochs = trial.suggest_int('epochs',5, progressive_config['max_epochs'])
+        epochs = trial.suggest_int('epochs',8, progressive_config['max_epochs'])
         optimizer = trial.suggest_categorical('optimizer', ['adam', 'sgd'])
         use_augmentation = trial.suggest_categorical('use_augmentation', [True, False])
 
@@ -197,7 +197,7 @@ if __name__ == "__main__":
     show_class_distribution_cli(raw_dataset, class_names, title="Before Augmentation")
 
 
-    augmented_dataset, sampler = prepare_augmented_balanced_dataset(
+    augmented_dataset, sampler = AugmentDataset(
         dataset=raw_dataset,
         image_size=(224, 224),
         grayscale=(dataset_class.channels == 1),
@@ -288,7 +288,7 @@ if __name__ == "__main__":
     # Retrain AutoML with best config and save predictions
     best_acc_trial = max(pareto_trials, key=lambda t: t.values[0])  
     best_params = best_acc_trial.params
-    final_epochs = 10 if args.dataset == "flowers" else 8
+    final_epochs = 10
     best_id = best_acc_trial.params['candidate_id']
     backbone, head = candidate_lookup[best_id]
 

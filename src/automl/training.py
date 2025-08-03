@@ -11,7 +11,7 @@ import optuna
 from model import get_model, get_transforms
 from utils import calculate_mean_std
 from torch.utils.data import Subset
-from RandAug import prepare_augmented_balanced_dataset
+from RandAug import AugmentDataset
 from DAC import DynamicAdjustmentController
 
 logger = logging.getLogger(__name__)
@@ -75,26 +75,13 @@ class AutoML:
             download=True,
             transform=None
         )
-
-        if self.use_augmentation:
-            n = trial.suggest_int("randaug_n", 1, 3) if trial else 2
-            m = trial.suggest_int("randaug_m", 5, 15) if trial else 9
-
-            dataset, sampler = prepare_augmented_balanced_dataset(
-                dataset=raw_dataset,
-                image_size=(224, 224),
-                grayscale=(dataset_class.channels == 1),
-                n=n,
-                m=m,
-                mean=mean,
-                std=std,
-                backbone_name=self.backbone
-            )
-
+    
         # Apply same transform before splitting
         if subsample is not None:
-            indices = np.random.choice(len(dataset), subsample, replace=False)
-            dataset = Subset(dataset, indices)
+            indices = np.random.choice(len(raw_dataset), subsample, replace=False)
+            dataset = Subset(raw_dataset, indices)
+        else: 
+            dataset = raw_dataset    
 
         # Split dataset into training and validation sets
         total_indices = list(range(len(dataset)))
@@ -104,23 +91,36 @@ class AutoML:
         train_indices = total_indices[:split]
         val_indices = total_indices[split:]
 
-        train_raw = Subset(raw_dataset, train_indices)
-        val_set = Subset(dataset, val_indices)
-        self._val_set = val_set
+        if self.use_augmentation:
+            n = trial.suggest_int("randaug_n", 1, 3) if trial else 2
+            m = trial.suggest_int("randaug_m", 5, 15) if trial else 9
 
-        # Augment only training split
-        train_augmented, sampler = prepare_augmented_balanced_dataset(
-            dataset=train_raw,
-            image_size=(224, 224),
-            grayscale=(dataset_class.channels == 1),
-            n=n,
-            m=m,
-            mean=mean,
-            std=std,
-            backbone_name=self.backbone
-        )
+        train_raw = Subset(dataset, train_indices)
+        val_raw = Subset(dataset, val_indices)
+ 
 
-        train_loader = DataLoader(train_augmented, batch_size=self.batch_size, sampler=sampler)
+        if self.use_augmentation:# Augment only training split
+            train_augmented, sampler = AugmentDataset(
+                dataset=train_raw,
+                image_size=(224, 224),
+                grayscale=(dataset_class.channels == 1),
+                n=n,
+                m=m,
+                mean=mean,
+                std=std,
+                backbone_name=self.backbone
+            )
+        else:
+            train_transform = get_transforms(mean, std, phase="train", backbone_name=self.backbone)
+            train_augmented = deepcopy(train_raw)
+            train_augmented.dataset.transform = train_transform
+            sampler = None
+        val_transform = get_transforms(mean, std, phase="val", backbone_name=self.backbone)
+        val_set = deepcopy(val_raw)
+        val_set.dataset.transform = val_transform
+        self._val_set = val_set 
+
+        train_loader = DataLoader(train_augmented, batch_size=self.batch_size, shuffle = (sampler is None), sampler=sampler)
 
         val_loader = DataLoader(val_set, batch_size=self.batch_size, shuffle=False)
 
@@ -137,7 +137,7 @@ class AutoML:
             optimizer = optim.SGD(model.parameters(), lr=self.lr, momentum=0.9)
 
         # Enable DAC for datasets    
-        if dataset_class.__name__ == ["SkinCancerDataset","EmotionsDataset","FlowersDataset","FashionDataset"]:
+        if dataset_class.__name__ in ["SkinCancerDataset","EmotionsDataset","FlowersDataset","FashionDataset"]:
             self.dac = DynamicAdjustmentController(optimizer, initial_lr=self.lr)
         
         # Training Loop
