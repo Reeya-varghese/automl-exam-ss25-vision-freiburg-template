@@ -4,7 +4,7 @@ import torch
 from copy import deepcopy
 import numpy as np
 from torch import nn, optim
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
 from sklearn.metrics import accuracy_score
 import random
 import optuna
@@ -12,6 +12,7 @@ from model import get_model, get_transforms
 from utils import calculate_mean_std
 from torch.utils.data import Subset, random_split
 from dac import DynamicAdjustmentController
+from torchvision import transforms
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,6 @@ class AutoML:
         self.custom_head = custom_head
         self.backbone = backbone
         self.epochs = epochs
-
         self.batch_size = batch_size
         self.use_augmentation = use_augmentation
         self._model: nn.Module | None = None
@@ -68,7 +68,13 @@ class AutoML:
             raise ValueError(f"{self.backbone} is disabled in this configuration.")
 
         mean, std = calculate_mean_std(dataset_class)
-        self._transform = get_transforms(mean, std, phase="train", backbone_name=self.backbone)
+        base_transform = get_transforms(mean, std, phase="train", backbone_name=self.backbone)
+
+        rand_augment = transforms.RandAugment(num_ops=1, magnitude=5)
+        if self.use_augmentation:
+            self._transform = transforms.Compose([rand_augment, base_transform])
+        else:
+            self._transform = base_transform
 
         dataset = dataset_class(
             root="./data",
@@ -76,15 +82,25 @@ class AutoML:
             download=True,
             transform=self._transform
         )
+
         if subsample is not None:
             indices = np.random.choice(len(dataset), subsample, replace=False)
             dataset = Subset(dataset, indices)
+
         train_len = int(0.8 * len(dataset))
         val_len = len(dataset) - train_len
         train_set, val_set = random_split(dataset, [train_len, val_len],
                                           generator=torch.Generator().manual_seed(self.seed))
+
+        # Build sampler based only on train_set
+        train_targets = [train_set.dataset[i][1] for i in train_set.indices]
+        class_counts = np.bincount(train_targets)
+        weights = 1. / class_counts[train_targets]
+        sampler = WeightedRandomSampler(weights, len(train_targets))
+        print(f"[BALANCE] Applied class balancing with WeightedRandomSampler.")
+        print(f"[BALANCE] Sample count per class: {np.bincount(train_targets)}", flush=True)
         self._val_set = val_set
-        train_loader = DataLoader(train_set, batch_size=self.batch_size, shuffle=True)
+        train_loader = DataLoader(train_set, batch_size=self.batch_size, sampler=sampler)
         val_loader = DataLoader(val_set, batch_size=self.batch_size, shuffle=False)
 
         model = get_model(
@@ -99,12 +115,10 @@ class AutoML:
         else:
             optimizer = optim.SGD(model.parameters(), lr=self.lr, momentum=0.9)
 
-        # Conditionally enable DAC for Skin Cancer dataset
-        if dataset_class.__name__ == "SkinCancerDataset":
-            print("[DEBUG] DAC ENABLED")
-            self.dac = DynamicAdjustmentController(optimizer, initial_lr=self.lr)
+        print(f"[DEBUG] DAC ENABLED for {dataset_class.__name__}")
+        self.dac = DynamicAdjustmentController(optimizer, initial_lr=self.lr)
 
-        criterion = nn.CrossEntropyLoss()
+        criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
         self._history = {"loss": [], "acc": [], "val_loss": [], "val_acc": []}
         best_val_acc = 0.0
         patience = 10
@@ -218,4 +232,3 @@ class AutoML:
                 predictions.append(pred)
                 labels.append(target.cpu().numpy())
         return np.concatenate(predictions), np.concatenate(labels)
-

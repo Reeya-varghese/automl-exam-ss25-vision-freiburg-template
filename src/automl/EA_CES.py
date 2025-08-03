@@ -14,7 +14,6 @@ from Zero_cost import ZeroCostCandidateGenerator
 from training import AutoML
 import optuna
 from optuna.samplers import NSGAIIISampler
-from vision_datasets import SkinCancerDataset
 
 from Plots import (
     save_optuna_visualizations,
@@ -184,7 +183,7 @@ def optuna_objective(
             f"{c['backbone']}_{i}": (c['backbone'], c['head'])
             for i, c in enumerate(top_k_candidates)
         }
-        lr = trial.suggest_float('lr', 1e-4, 1e-2, log=True)
+        lr = trial.suggest_float("lr", 1e-5, 5e-4, log=True)
 
         # NEW: Progressive configuration
         # progressive_config = get_progressive_config(trial.number, trial.study.n_trials, enable_progressive)
@@ -440,7 +439,7 @@ if __name__ == "__main__":
         np.save(f, test_preds)
 
     print(f"\n✅ FINAL RESULTS:")
-    print(f"Predictions saved to: {output_path}")
+    print(f"📊 Predictions saved to: {output_path}")
     if not np.isnan(test_labels).any():
         acc = accuracy_score(test_labels, test_preds)
         f1 = f1_score(test_labels, test_preds, average="macro")
@@ -460,7 +459,7 @@ if __name__ == "__main__":
     print(f"   Architecture Efficiency: {efficiency_used:.1f} (1.0 = most efficient)")
     print(f"   Estimated Carbon Saved: {carbon_saved_estimate:.4f} kg CO2eq")
     print(
-        f"Peak GPU Memory: {max(global_metrics['peak_gpu_memory_gb'], final_metrics['peak_gpu_memory_gb']):.2f} GB")
+        f"🖥️ Peak GPU Memory: {max(global_metrics['peak_gpu_memory_gb'], final_metrics['peak_gpu_memory_gb']):.2f} GB")
 
     # Carbon efficiency metrics
     if total_emissions > 0:

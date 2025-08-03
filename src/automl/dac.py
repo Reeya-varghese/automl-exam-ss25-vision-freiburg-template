@@ -5,22 +5,13 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class DynamicAdjustmentController:
     """
     DAC module to dynamically adjust learning rate and optimizer during training.
-    Automatically tracks loss trends to determine whether to decay learning rate or switch optimizers.
     """
+
     def __init__(self, optimizer, initial_lr=0.001, switch_optimizer_epoch=5, min_lr=1e-5, decay_factor=0.7):
-        """
-        Args:
-        optimizer (torch.optim.Optimizer): The initial optimizer (typically Adam).
-        initial_lr (float): Starting learning rate value.
-        switch_optimizer_epoch (int): Epoch at which to switch to SGD optimizer.
-        min_lr (float): Minimum allowable learning rate after decay.
-        decay_factor (float): Factor by which to reduce learning rate when loss plateaus.
-
-        """
-
         self.optimizer = optimizer
         self.initial_lr = initial_lr
         self.min_lr = min_lr
@@ -31,50 +22,33 @@ class DynamicAdjustmentController:
         self.optimizer_switched = False
 
     def update(self, loss):
-        """
-        Called at the end of each epoch to update internal state based on current loss.
-        Triggers learning rate decay or optimizer switch if conditions are met.
-
-        """
         self.loss_history.append(loss)
         self.epoch += 1
-
-        print(f"DAC triggered at epoch {self.epoch}", flush=True)
-        current_lr = self.optimizer.param_groups[0]['lr']
-        print(f"DAC active — current LR: {current_lr:.6f}", flush=True)
 
         # Learning rate decay logic (based on recent plateau)
         if len(self.loss_history) >= 3:
             recent_losses = self.loss_history[-3:]
-            loss_delta = max(recent_losses) - min(recent_losses)
-            if loss_delta < 0.01:
+            if max(recent_losses) - min(recent_losses) < 0.01:
                 self._decay_lr()
-            else:
-                print(f"DAC skipped LR decay — loss change too high (Δ={loss_delta:.6f})", flush=True)
 
         # Optimizer switching (e.g., from Adam to SGD)
         if self.epoch == self.switch_optimizer_epoch and not self.optimizer_switched:
             if isinstance(self.optimizer, torch.optim.Adam):
-                print("DAC switching optimizer to SGD", flush=True)
+                logger.info("🔁 DAC: Switching optimizer from Adam to SGD")
                 params = self.optimizer.param_groups[0]['params']
                 lr = self.optimizer.param_groups[0]['lr']
                 self.optimizer = torch.optim.SGD(params, lr=lr, momentum=0.9)
                 self.optimizer_switched = True
+        print(f"[DAC] Epoch {self.epoch}: LR = {self.optimizer.param_groups[0]['lr']:.6f}", flush=True)
+        print("🔁 DAC switching optimizer to SGD", flush=True)
 
     def _decay_lr(self):
-        """
-        Internally called to decay the learning rate of the optimizer.
-        Ensures learning rate stays above min_lr.
-        """
         for param_group in self.optimizer.param_groups:
             old_lr = param_group['lr']
             new_lr = max(self.min_lr, old_lr * self.decay_factor)
             if new_lr < old_lr:
-                print(f"DAC reduced LR: {old_lr:.6f} ➜ {new_lr:.6f}", flush=True)
                 param_group['lr'] = new_lr
+                print(f"📉 DAC reduced LR: {old_lr:.6f} ➜ {new_lr:.6f}", flush=True)
 
     def get_optimizer(self):
-        """
-        Returns the current optimizer instance (possibly updated if switched).
-        """
         return self.optimizer
