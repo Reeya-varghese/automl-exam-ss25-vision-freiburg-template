@@ -79,29 +79,27 @@ class AutoML:
         # Apply same transform before splitting
         if subsample is not None:
             indices = np.random.choice(len(raw_dataset), subsample, replace=False)
-            dataset = Subset(raw_dataset, indices)
-        else: 
-            dataset = raw_dataset    
-
-        # Split dataset into training and validation sets
-        total_indices = list(range(len(dataset)))
+        else:
+            indices = list(range(len(raw_dataset)))
+      
         np.random.seed(self.seed)
-        np.random.shuffle(total_indices)
-        split = int(0.8 * len(dataset))
-        train_indices = total_indices[:split]
-        val_indices = total_indices[split:]
+        np.random.shuffle(indices)
+        split = int(0.8 * len(indices))
+        train_indices = indices[:split]
+        val_indices = indices[split:]
 
         if self.use_augmentation:
             n = trial.suggest_int("randaug_n", 1, 3) if trial else 2
             m = trial.suggest_int("randaug_m", 5, 15) if trial else 9
 
-        train_raw = Subset(dataset, train_indices)
-        val_raw = Subset(dataset, val_indices)
- 
-
-        if self.use_augmentation:# Augment only training split
-            train_augmented, sampler = AugmentDataset(
-                dataset=train_raw,
+        
+            train_dataset = AugmentDataset(
+                dataset=dataset_class(
+                    root="./data",
+                    split="train",
+                    transform=None,  # AugmentDataset will handle transform
+                    download=False
+                ),
                 image_size=(224, 224),
                 grayscale=(dataset_class.channels == 1),
                 n=n,
@@ -110,18 +108,31 @@ class AutoML:
                 std=std,
                 backbone_name=self.backbone
             )
+            train_set = Subset(train_dataset, train_indices)
+            sampler = train_dataset[1] if isinstance(train_dataset, tuple) else None
+
         else:
             train_transform = get_transforms(mean, std, phase="train", backbone_name=self.backbone)
-            train_augmented = deepcopy(train_raw)
-            train_augmented.dataset.transform = train_transform
+            train_dataset = dataset_class(
+                root="./data",
+                split="train",
+                transform=train_transform,
+                download=False
+            )
+            train_set = Subset(train_dataset, train_indices)
             sampler = None
         val_transform = get_transforms(mean, std, phase="val", backbone_name=self.backbone)
-        val_set = deepcopy(val_raw)
-        val_set.dataset.transform = val_transform
-        self._val_set = val_set 
+        val_dataset = dataset_class(
+            root="./data",
+            split="train",
+            transform=val_transform,
+            download=False
+        )
+        val_set = Subset(val_dataset, val_indices)
+        self._val_set = val_set
 
-        train_loader = DataLoader(train_augmented, batch_size=self.batch_size, shuffle = (sampler is None), sampler=sampler)
-
+# Dataloaders
+        train_loader = DataLoader(train_set, batch_size=self.batch_size, shuffle=(sampler is None), sampler=sampler)
         val_loader = DataLoader(val_set, batch_size=self.batch_size, shuffle=False)
 
         model = get_model(
