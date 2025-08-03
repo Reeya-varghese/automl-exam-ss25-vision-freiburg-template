@@ -40,7 +40,7 @@ class DynamicAdjustmentController:
                 self.optimizer = torch.optim.SGD(params, lr=lr, momentum=0.9)
                 self.optimizer_switched = True
         print(f"[DAC] Epoch {self.epoch}: LR = {self.optimizer.param_groups[0]['lr']:.6f}", flush=True)
-        print("🔁 DAC switching optimizer to SGD", flush=True)
+        print("DAC switching optimizer to SGD", flush=True)
 
     def _decay_lr(self):
         for param_group in self.optimizer.param_groups:
@@ -48,7 +48,7 @@ class DynamicAdjustmentController:
             new_lr = max(self.min_lr, old_lr * self.decay_factor)
             if new_lr < old_lr:
                 param_group['lr'] = new_lr
-                print(f"📉 DAC reduced LR: {old_lr:.6f} ➜ {new_lr:.6f}", flush=True)
+                print(f"DAC reduced LR: {old_lr:.6f} ➜ {new_lr:.6f}", flush=True)
 
     def get_optimizer(self):
         return self.optimizer

@@ -462,9 +462,9 @@ if __name__ == "__main__":
         f"🖥️ Peak GPU Memory: {max(global_metrics['peak_gpu_memory_gb'], final_metrics['peak_gpu_memory_gb']):.2f} GB")
 
     # Carbon efficiency metrics
-    if total_emissions > 0:
-        carbon_efficiency = acc / (total_emissions * 1000)  # Accuracy per gram CO2
-        print(f"📈 Carbon Efficiency: {carbon_efficiency:.1f} accuracy points per gram CO2")
+    #if total_emissions > 0:
+    #    carbon_efficiency = acc / (total_emissions * 1000)  # Accuracy per gram CO2
+    #    print(f"📈 Carbon Efficiency: {carbon_efficiency:.1f} accuracy points per gram CO2")
 
     print("✅ Enhanced AutoML with Combined Carbon Strategies completed successfully!")
 
