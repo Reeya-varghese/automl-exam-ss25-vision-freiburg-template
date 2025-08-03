@@ -25,6 +25,11 @@ from utils import calculate_mean_std
 from vision_datasets import FashionDataset, FlowersDataset, EmotionsDataset, SkinCancerDataset
 from torch.utils.data import random_split
 
+import warnings
+
+# Suppress only CodeCarbon warnings
+warnings.filterwarnings("ignore")
+
 # ---------------------------------------------
 logger = logging.getLogger(__name__)
 
@@ -450,14 +455,13 @@ if __name__ == "__main__":
     # NEW: Enhanced carbon summary
     total_emissions = global_metrics['emissions_kg'] + final_metrics['emissions_kg']
     efficiency_used = get_architecture_efficiency_weight(backbone)
-    carbon_saved_estimate = total_emissions * (1 - efficiency_used) if efficiency_used < 1.0 else 0
-
+    
     print(f"\n🌱 SUSTAINABILITY SUMMARY:")
     print(f"   Total Carbon Footprint: {total_emissions:.4f} kg CO2eq")
     print(f"   HPO Phase: {global_metrics['emissions_kg']:.4f} kg")
     print(f"   Final Training: {final_metrics['emissions_kg']:.4f} kg")
-    print(f"   Architecture Efficiency: {efficiency_used:.1f} (1.0 = most efficient)")
-    print(f"   Estimated Carbon Saved: {carbon_saved_estimate:.4f} kg CO2eq")
+   
+  
     print(
         f"🖥️ Peak GPU Memory: {max(global_metrics['peak_gpu_memory_gb'], final_metrics['peak_gpu_memory_gb']):.2f} GB")
 
