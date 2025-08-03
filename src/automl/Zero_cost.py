@@ -87,6 +87,8 @@ class ZeroCostCandidateGenerator:
     def get_feature_dim(self, model, backbone_name):
         model.eval()
         dummy_input = torch.randn(1, self.real_input.shape[1], 224, 224).to(self.device)
+        if "vit" in backbone_name and dummy_input.shape[1] == 1:
+            dummy_input = dummy_input.repeat(1, 3, 1, 1)  # Expand grayscale to 3 channels for ViT
         feats = self.extract_features(model, backbone_name, dummy_input)
         return feats.shape[-1]
 
