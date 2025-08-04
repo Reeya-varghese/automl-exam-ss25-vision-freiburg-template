@@ -151,10 +151,10 @@ class AutoML:
                 wait = 0
             else:
                 wait += 1
-                if wait >= patience:
-                    print(f"⏹️ Early stopping at epoch {epoch + 1} — Best Val Acc: {best_val_acc:.4f}")
+                # if wait >= patience:
+                #     print(f"⏹️ Early stopping at epoch {epoch + 1} — Best Val Acc: {best_val_acc:.4f}")
 
-                    break
+                #     break
             model.train()
         if best_model_state:
             model.load_state_dict(best_model_state)
