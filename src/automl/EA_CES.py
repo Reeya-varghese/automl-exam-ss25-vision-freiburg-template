@@ -162,10 +162,10 @@ def optuna_objective(
         standard_config = get_standard_config()
 
         # Standard candidate selection (no efficiency bias)
-        if 'vit' not in candidate_id:
-            candidate_id = trial.suggest_categorical("candidate_id", 
-                [cid for cid in candidate_lookup.keys() if 'vit' in cid])
-        #candidate_id = trial.suggest_categorical("candidate_id", list(candidate_lookup.keys()))
+        # if 'vit' not in candidate_id:
+        #     candidate_id = trial.suggest_categorical("candidate_id", 
+        #         [cid for cid in candidate_lookup.keys() if 'vit' in cid])
+        candidate_id = trial.suggest_categorical("candidate_id", list(candidate_lookup.keys()))
 
         # Standard resource optimization (no restrictions)
         # epochs = trial.suggest_int('epochs', 4, standard_config['max_epochs'])
@@ -446,7 +446,14 @@ if __name__ == "__main__":
               f"Carbon: {actual_carbon:.4f}kg, Eff: {efficiency:.1f} | {t.params}")
 
     # Generate carbon emission analysis plots
-    plot_carbon_emissions(carbon_tracker_data)
+    # Safety check before plotting
+    if not carbon_tracker_data.get('trials'):
+        print("⚠️ No carbon tracking data - creating summary from Optuna trials")
+        total_emissions = sum([t.user_attrs.get('emissions_kg', 0) for t in study.trials])
+        print(f"🌱 Total emissions from {len(study.trials)} trials: {total_emissions:.4f} kg")
+    else:
+        plot_carbon_emissions(carbon_tracker_data)
+    # plot_carbon_emissions(carbon_tracker_data)
 
     # Select best accuracy solution
     best_acc_trial = max(pareto_trials, key=lambda t: t.values[0])
@@ -508,9 +515,9 @@ if __name__ == "__main__":
     print(f"🖥️ Peak GPU Memory: {max(global_metrics['peak_gpu_memory_gb'], final_metrics['peak_gpu_memory_gb']):.2f} GB")
 
     # Calculate total carbon efficiency
-    if total_emissions > 0 and not np.isnan(test_labels).any():
-        carbon_efficiency = acc / (total_emissions * 1000)  # Accuracy per gram CO2
-        print(f"📈 Overall Carbon Efficiency: {carbon_efficiency:.1f} accuracy points per gram CO2")
+    # if total_emissions > 0 and not np.isnan(test_labels).any():
+    #     carbon_efficiency = acc / (total_emissions * 1000)  # Accuracy per gram CO2
+    #     print(f"📈 Overall Carbon Efficiency: {carbon_efficiency:.1f} accuracy points per gram CO2")
 
     print("✅ AutoML with Carbon Emission Tracking completed successfully!")
 
