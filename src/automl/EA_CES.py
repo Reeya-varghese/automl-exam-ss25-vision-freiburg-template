@@ -9,8 +9,7 @@ from torch.utils.data import DataLoader
 from sklearn.metrics import accuracy_score, f1_score
 import threading
 from codecarbon import EmissionsTracker
-import matplotlib.pyplot as plt
-import pandas as pd
+import random
 
 from Zero_cost import ZeroCostCandidateGenerator
 from training import AutoML
@@ -97,9 +96,229 @@ class CarbonGPUTracker:
         }
 
 
-# REMOVED: Architecture efficiency weights - now only for tracking
+class CarbonBudgetManager:
+    """
+    Dynamic carbon budget management that adjusts architecture selection 
+    based on remaining budget and trial progress.
+    """
+    
+    def __init__(self, total_budget_kg=0.15, total_trials=100):
+        self.total_budget = total_budget_kg
+        self.total_trials = total_trials
+        self.used_budget = 0.0
+        self.trial_count = 0
+        self.architecture_costs = {
+            'resnet18': 0.001,           # Estimated carbon cost per trial
+            'efficientnet_b0': 0.0015,
+            'vit_base_patch16_224': 0.003
+        }
+        self.trial_history = []
+        
+    def get_architecture_probability(self, trial_number):
+        """
+        Dynamically adjust architecture selection based on remaining budget.
+        
+        Args:
+            trial_number (int): Current trial number
+            
+        Returns:
+            dict: Architecture probabilities for weighted selection
+        """
+        self.trial_count = trial_number
+        remaining_trials = max(1, self.total_trials - trial_number)  # Avoid division by zero
+        remaining_budget = max(0, self.total_budget - self.used_budget)
+        
+        # Calculate budget per remaining trial
+        budget_per_remaining_trial = remaining_budget / remaining_trials
+        
+        print(f"[CARBON BUDGET] Trial {trial_number}: "
+              f"Used: {self.used_budget:.4f}kg, "
+              f"Remaining: {remaining_budget:.4f}kg, "
+              f"Per trial: {budget_per_remaining_trial:.4f}kg")
+        
+        # Adaptive thresholds based on progress
+        progress_ratio = trial_number / self.total_trials
+        
+        # Early stage: more conservative thresholds
+        if progress_ratio < 0.3:
+            high_threshold = 0.003
+            medium_threshold = 0.0015
+        # Middle stage: balanced thresholds
+        elif progress_ratio < 0.7:
+            high_threshold = 0.0025
+            medium_threshold = 0.0012
+        # Late stage: more aggressive thresholds (willing to spend more for good results)
+        else:
+            high_threshold = 0.002
+            medium_threshold = 0.001
+        
+        # Determine architecture probabilities based on budget availability
+        if budget_per_remaining_trial > high_threshold:
+            # Generous budget - favor complex models for potential high performance
+            probs = {
+                'resnet18': 0.25,
+                'efficientnet_b0': 0.35,
+                'vit_base_patch16_224': 0.40
+            }
+            budget_status = "GENEROUS"
+        elif budget_per_remaining_trial > medium_threshold:
+            # Moderate budget - balanced approach
+            probs = {
+                'resnet18': 0.40,
+                'efficientnet_b0': 0.40,
+                'vit_base_patch16_224': 0.20
+            }
+            budget_status = "MODERATE"
+        else:
+            # Low budget - prioritize efficient models
+            probs = {
+                'resnet18': 0.60,
+                'efficientnet_b0': 0.35,
+                'vit_base_patch16_224': 0.05
+            }
+            budget_status = "LOW"
+        
+        print(f"[CARBON BUDGET] Status: {budget_status}, "
+              f"ViT probability: {probs['vit_base_patch16_224']:.2f}")
+        
+        return probs
+    
+    def weighted_architecture_choice(self, architectures, trial_number):
+        """
+        Select architecture using weighted random selection based on carbon budget.
+        
+        Args:
+            architectures (list): Available architecture names
+            trial_number (int): Current trial number
+            
+        Returns:
+            str: Selected architecture name
+        """
+        probs = self.get_architecture_probability(trial_number)
+        
+        # Filter available architectures and their probabilities
+        available_probs = {arch: probs.get(arch, 0.1) for arch in architectures if arch in probs}
+        
+        if not available_probs:
+            # Fallback to uniform selection if no matches
+            return random.choice(architectures)
+        
+        # Normalize probabilities
+        total_prob = sum(available_probs.values())
+        normalized_probs = {arch: prob/total_prob for arch, prob in available_probs.items()}
+        
+        # Weighted random selection
+        rand_val = random.random()
+        cumulative = 0.0
+        for arch, prob in normalized_probs.items():
+            cumulative += prob
+            if rand_val <= cumulative:
+                print(f"[CARBON BUDGET] Selected architecture: {arch} (prob: {prob:.3f})")
+                return arch
+        
+        # Fallback
+        return list(available_probs.keys())[0]
+    
+    def get_dynamic_training_config(self, backbone_name, trial_number):
+        """
+        Get training configuration based on architecture efficiency and budget.
+        
+        Args:
+            backbone_name (str): Selected backbone architecture
+            trial_number (int): Current trial number
+            
+        Returns:
+            dict: Training configuration
+        """
+        progress_ratio = trial_number / self.total_trials
+        remaining_budget = max(0, self.total_budget - self.used_budget)
+        remaining_trials = max(1, self.total_trials - trial_number)
+        
+        # Base epochs increase with progress
+        base_epochs = int(6 + (progress_ratio * 6))  # 6→12 epochs over time
+        
+        # Architecture efficiency multiplier
+        efficiency_weights = {
+            'resnet18': 1.0,
+            'efficientnet_b0': 0.8,
+            'vit_base_patch16_224': 0.4
+        }
+        efficiency = efficiency_weights.get(backbone_name, 0.6)
+        
+        # Budget-aware epoch adjustment
+        budget_per_remaining_trial = remaining_budget / remaining_trials
+        if budget_per_remaining_trial > 0.002:
+            # Generous budget - allow longer training for complex models
+            if efficiency < 0.6:  # Complex models (ViT)
+                epoch_multiplier = 1.2
+            else:
+                epoch_multiplier = 1.0
+        elif budget_per_remaining_trial > 0.001:
+            # Moderate budget - standard training
+            epoch_multiplier = 1.0
+        else:
+            # Low budget - shorter training, especially for complex models
+            if efficiency < 0.6:
+                epoch_multiplier = 0.7
+            else:
+                epoch_multiplier = 0.9
+        
+        final_epochs = max(4, int(base_epochs * epoch_multiplier))
+        
+        return {
+            'epochs': final_epochs,
+            'early_stopping_patience': max(3, final_epochs // 3),
+            'efficiency_weight': efficiency
+        }
+    
+    def update_used_budget(self, trial_carbon_cost, trial_number, backbone_name, performance_metrics=None):
+        """
+        Update budget tracking after each trial.
+        
+        Args:
+            trial_carbon_cost (float): Actual carbon cost of the trial
+            trial_number (int): Trial number
+            backbone_name (str): Architecture used
+            performance_metrics (dict): Optional performance metrics for analysis
+        """
+        self.used_budget += trial_carbon_cost
+        
+        # Track trial history for analysis
+        trial_record = {
+            'trial_number': trial_number,
+            'backbone': backbone_name,
+            'carbon_cost': trial_carbon_cost,
+            'cumulative_budget': self.used_budget,
+            'performance': performance_metrics
+        }
+        self.trial_history.append(trial_record)
+        
+        print(f"[CARBON BUDGET] Trial {trial_number} ({backbone_name}): "
+              f"Cost: {trial_carbon_cost:.4f}kg, "
+              f"Total used: {self.used_budget:.4f}kg / {self.total_budget:.4f}kg "
+              f"({100*self.used_budget/self.total_budget:.1f}%)")
+        
+        # Warn if budget is running low
+        if self.used_budget > 0.8 * self.total_budget:
+            remaining_trials = self.total_trials - trial_number - 1
+            if remaining_trials > 0:
+                print(f"[CARBON BUDGET] ⚠️ WARNING: {100*self.used_budget/self.total_budget:.1f}% "
+                      f"budget used with {remaining_trials} trials remaining!")
+    
+    def get_budget_summary(self):
+        """Get summary of budget usage"""
+        return {
+            'total_budget': self.total_budget,
+            'used_budget': self.used_budget,
+            'remaining_budget': self.total_budget - self.used_budget,
+            'utilization_percent': 100 * self.used_budget / self.total_budget,
+            'trial_history': self.trial_history
+        }
+
+
+# Architecture efficiency weights (unchanged)
 def get_architecture_efficiency_weight(backbone_name):
-    """Efficiency weights for tracking purposes only (no longer used for pruning)"""
+    """Efficiency weights based on parameter count and energy research"""
     efficiency_weights = {
         'resnet18': 1.0,  # Most efficient (11M params)
         'efficientnet_b0': 0.8,  # Good efficiency (5M params, but complex ops)
@@ -109,31 +328,25 @@ def get_architecture_efficiency_weight(backbone_name):
     return efficiency_weights.get(backbone_name, 0.5)
 
 
-# REMOVED: Progressive training strategy - now using standard configuration
-def get_standard_config():
-    """Standard configuration without progressive restrictions"""
-    return {
-        'max_epochs': 12,  # Allow full epoch range
-        'min_batch_size': 16,
-        'prefer_efficient_arch': False  # No architecture preference
-    }
-
-
-# Standard reference points for optimization (without carbon focus)
-def get_standard_reference_points():
-    """Standard reference points for 3-objective optimization (accuracy, f1, time)"""
+# Enhanced reference points for carbon-aware optimization (unchanged)
+def get_enhanced_reference_points():
+    """Enhanced reference points for 5-objective optimization with carbon focus"""
     return np.array([
         # Performance-focused solutions
-        [1, 0, 0],  # Pure accuracy
-        [0, 1, 0],  # Pure F1
-        [0.7, 0.3, 0],  # Balanced performance
-        
-        # Speed-focused solutions
-        [0, 0, 1],  # Pure speed
-        [0.5, 0.5, 0],  # Balanced performance
-        [0.3, 0.3, 0.4],  # Balanced with speed consideration
-        [0.6, 0.2, 0.2],  # Accuracy focused with some speed
-        [0.2, 0.6, 0.2],  # F1 focused with some speed
+        [1, 0, 0, 0, 0],  # Pure accuracy
+        [0, 1, 0, 0, 0],  # Pure F1
+        [0.7, 0.3, 0, 0, 0],  # Balanced performance
+
+        # Efficiency-focused solutions
+        [0, 0, 1, 0, 0],  # Pure speed
+        [0, 0, 0, 1, 0],  # Pure carbon efficiency
+        [0, 0, 0, 0, 1],  # Pure GPU efficiency
+
+        # Balanced sustainability solutions
+        [0.4, 0.4, 0.1, 0.05, 0.05],  # Performance + minimal sustainability
+        [0.3, 0.3, 0.2, 0.1, 0.1],  # Balanced all objectives
+        [0.2, 0.2, 0.15, 0.25, 0.2],  # Sustainability-focused
+        [0.1, 0.1, 0.1, 0.35, 0.35],  # Green AI focused
     ])
 
 
@@ -142,46 +355,61 @@ def optuna_objective(
         dataset_class: Any,
         seed: int = 42,
         top_k_candidates: list[dict[str, Any]] = None,
-        carbon_tracker_data: dict = None  # For collecting carbon data
-) -> Tuple[float, float, float]:
-    """Standard objective without carbon constraints"""
+        carbon_budget_manager: CarbonBudgetManager = None,
+        total_trials: int = 10
+) -> Tuple[float, float, float, float, float]:
+    """Enhanced objective with carbon budget management"""
 
     # Start carbon tracking
     tracker = CarbonGPUTracker(f"trial_{trial.number}")
     tracker.start_tracking(trial.number)
 
     try:
-        # Standard hyperparameter suggestions (unchanged)
+        # Create candidate lookup
         candidate_lookup = {
             f"{c['backbone']}_{i}": (c['backbone'], c['head'])
             for i, c in enumerate(top_k_candidates)
         }
-        lr = trial.suggest_float("lr", 1e-5, 5e-4, log=True)
+        
+        # Get available backbones
+        available_backbones = list(set(c['backbone'] for c in top_k_candidates))
+        
+        # Carbon budget-aware architecture selection
+        if carbon_budget_manager:
+            selected_backbone = carbon_budget_manager.weighted_architecture_choice(
+                available_backbones, trial.number
+            )
+            # Find a candidate with the selected backbone
+            matching_candidates = [cid for cid, (backbone, _) in candidate_lookup.items() 
+                                 if backbone == selected_backbone]
+            if matching_candidates:
+                candidate_id = trial.suggest_categorical("candidate_id", matching_candidates)
+            else:
+                # Fallback to original selection
+                candidate_id = trial.suggest_categorical("candidate_id", list(candidate_lookup.keys()))
+        else:
+            # Original selection method
+            candidate_id = trial.suggest_categorical("candidate_id", list(candidate_lookup.keys()))
 
-        # REMOVED: Progressive configuration - using standard config
-        standard_config = get_standard_config()
-
-        # Standard candidate selection (no efficiency bias)
-        # if 'vit' not in candidate_id:
-        #     candidate_id = trial.suggest_categorical("candidate_id", 
-        #         [cid for cid in candidate_lookup.keys() if 'vit' in cid])
-        candidate_id = trial.suggest_categorical("candidate_id", list(candidate_lookup.keys()))
-
-        # Standard resource optimization (no restrictions)
-        # epochs = trial.suggest_int('epochs', 4, standard_config['max_epochs'])
-        epochs = trial.suggest_int('epochs', 10, 18)
-        batch_size_options = [16, 32, 64]
-        # batch_size = trial.suggest_categorical('batch_size', batch_size_options)
-        batch_size = trial.suggest_categorical('batch_size', [8, 16])
-
-        optimizer = trial.suggest_categorical('optimizer', ['adam', 'sgd'])
+        # Get backbone and head
         backbone, head = candidate_lookup[candidate_id]
+        
+        # Get dynamic training configuration
+        if carbon_budget_manager:
+            training_config = carbon_budget_manager.get_dynamic_training_config(backbone, trial.number)
+            epochs = training_config['epochs']
+            efficiency_weight = training_config['efficiency_weight']
+        else:
+            epochs = trial.suggest_int('epochs', 4, 8)
+            efficiency_weight = get_architecture_efficiency_weight(backbone)
+
+        # Other hyperparameters
+        lr = trial.suggest_float("lr", 1e-5, 5e-4, log=True)
+        batch_size = trial.suggest_categorical('batch_size', [16, 32, 64])
+        optimizer = trial.suggest_categorical('optimizer', ['adam', 'sgd'])
         use_augmentation = trial.suggest_categorical('use_augmentation', [True])
 
-        # Get architecture efficiency weight for tracking only
-        efficiency_weight = get_architecture_efficiency_weight(backbone)
-
-        # Standard AutoML training (unchanged)
+        # Train model
         automl = AutoML(
             seed=seed,
             num_layers_to_freeze=0,
@@ -193,11 +421,11 @@ def optuna_objective(
             optimizer=optimizer,
             custom_head=head
         )
+        
         start = time.time()
-        print(f"Training with head: {head}")
-
         automl.fit(dataset_class, subsample=2000, trial=trial)
         training_time = time.time() - start
+        
         logger.info(f"Training time: {training_time:.2f} seconds")
         trial.set_user_attr("head_type", head.__class__.__name__)
         trial.set_user_attr("backbone", backbone)
@@ -214,135 +442,38 @@ def optuna_objective(
     except Exception as e:
         logger.error(f"Trial {trial.number} failed: {e}")
         tracker.stop_tracking()
-        return 0.0, 0.0, 999.0
+        return 0.0, 0.0, 999.0, 999.0, 999.0
 
-    # Get sustainability metrics for tracking
+    # Get sustainability metrics
     sustainability_metrics = tracker.stop_tracking()
 
-    # REMOVED: Carbon budget constraint - no pruning based on emissions
-    
-    # Store carbon data for analysis
-    if carbon_tracker_data is not None:
-        carbon_tracker_data['trials'].append({
-            'trial_number': trial.number,
-            'emissions_kg': sustainability_metrics['emissions_kg'],
-            'training_time': sustainability_metrics['training_time'],
-            'peak_gpu_memory_gb': sustainability_metrics['peak_gpu_memory_gb'],
-            'backbone': backbone,
-            'efficiency_weight': efficiency_weight,
-            'accuracy': acc,
-            'f1': f1,
-            'epochs': epochs,
-            'batch_size': batch_size
-        })
+    # Apply architecture efficiency weighting to carbon cost
+    adjusted_carbon = sustainability_metrics['emissions_kg'] / efficiency_weight
 
-    # Add sustainability tracking to user attributes (for analysis)
+    # Update carbon budget manager
+    if carbon_budget_manager:
+        performance_metrics = {'accuracy': acc, 'f1': f1}
+        carbon_budget_manager.update_used_budget(
+            sustainability_metrics['emissions_kg'], 
+            trial.number, 
+            backbone, 
+            performance_metrics
+        )
+
+    # Add sustainability tracking to user attributes
     trial.set_user_attr("emissions_kg", sustainability_metrics['emissions_kg'])
+    trial.set_user_attr("adjusted_carbon", adjusted_carbon)
     trial.set_user_attr("peak_gpu_memory_gb", sustainability_metrics['peak_gpu_memory_gb'])
     trial.set_user_attr("efficiency_weight", efficiency_weight)
 
-    # Return 3 objectives: accuracy, f1, time (removed carbon objectives)
+    # Return 5 objectives: accuracy, f1, time, adjusted_emissions, gpu_memory
     return (
         acc,
         f1,
-        training_time
+        training_time,
+        adjusted_carbon,
+        sustainability_metrics['peak_gpu_memory_gb']
     )
-
-
-def plot_carbon_emissions(carbon_data, output_dir="./plots"):
-    """Generate comprehensive carbon emission plots"""
-    Path(output_dir).mkdir(exist_ok=True)
-    
-    df = pd.DataFrame(carbon_data['trials'])
-    
-    # Plot 1: Cumulative emissions over trials
-    plt.figure(figsize=(12, 8))
-    cumulative_emissions = df['emissions_kg'].cumsum()
-    plt.subplot(2, 2, 1)
-    plt.plot(df['trial_number'], cumulative_emissions, 'b-', marker='o', markersize=4)
-    plt.xlabel('Trial Number')
-    plt.ylabel('Cumulative CO2 Emissions (kg)')
-    plt.title('Cumulative Carbon Emissions Over Trials')
-    plt.grid(True, alpha=0.3)
-    
-    # Plot 2: Emissions per trial
-    plt.subplot(2, 2, 2)
-    plt.bar(df['trial_number'], df['emissions_kg'], alpha=0.7, color='orange')
-    plt.xlabel('Trial Number')
-    plt.ylabel('CO2 Emissions per Trial (kg)')
-    plt.title('Carbon Emissions per Trial')
-    plt.grid(True, alpha=0.3)
-    
-    # Plot 3: Emissions vs Performance
-    plt.subplot(2, 2, 3)
-    plt.scatter(df['emissions_kg'], df['accuracy'], alpha=0.6, c=df['trial_number'], cmap='viridis')
-    plt.xlabel('CO2 Emissions (kg)')
-    plt.ylabel('Accuracy')
-    plt.title('Carbon Emissions vs Accuracy')
-    plt.colorbar(label='Trial Number')
-    plt.grid(True, alpha=0.3)
-    
-    # Plot 4: Emissions by backbone
-    plt.subplot(2, 2, 4)
-    backbone_emissions = df.groupby('backbone')['emissions_kg'].mean()
-    plt.bar(range(len(backbone_emissions)), backbone_emissions.values, alpha=0.7, color='green')
-    plt.xlabel('Backbone Architecture')
-    plt.ylabel('Average CO2 Emissions (kg)')
-    plt.title('Average Emissions by Architecture')
-    plt.xticks(range(len(backbone_emissions)), backbone_emissions.index, rotation=45)
-    plt.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    plt.savefig(f"{output_dir}/carbon_emissions_analysis.png", dpi=300, bbox_inches='tight')
-    plt.show()
-    
-    # Additional detailed plot
-    plt.figure(figsize=(14, 6))
-    
-    # Training time vs emissions
-    plt.subplot(1, 2, 1)
-    plt.scatter(df['training_time'], df['emissions_kg'], 
-                c=df['accuracy'], cmap='RdYlGn', alpha=0.7, s=60)
-    plt.xlabel('Training Time (seconds)')
-    plt.ylabel('CO2 Emissions (kg)')
-    plt.title('Training Time vs Carbon Emissions\n(Color = Accuracy)')
-    plt.colorbar(label='Accuracy')
-    plt.grid(True, alpha=0.3)
-    
-    # GPU memory vs emissions
-    plt.subplot(1, 2, 2)
-    plt.scatter(df['peak_gpu_memory_gb'], df['emissions_kg'], 
-                c=df['epochs'], cmap='plasma', alpha=0.7, s=60)
-    plt.xlabel('Peak GPU Memory (GB)')
-    plt.ylabel('CO2 Emissions (kg)')
-    plt.title('GPU Memory vs Carbon Emissions\n(Color = Epochs)')
-    plt.colorbar(label='Epochs')
-    plt.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    plt.savefig(f"{output_dir}/carbon_detailed_analysis.png", dpi=300, bbox_inches='tight')
-    plt.show()
-    
-    # Print summary statistics
-    print(f"\n🌱 CARBON EMISSIONS ANALYSIS:")
-    print(f"=" * 50)
-    print(f"Total CO2 Emissions: {df['emissions_kg'].sum():.4f} kg")
-    print(f"Average per Trial: {df['emissions_kg'].mean():.4f} kg")
-    print(f"Min per Trial: {df['emissions_kg'].min():.4f} kg")
-    print(f"Max per Trial: {df['emissions_kg'].max():.4f} kg")
-    print(f"Standard Deviation: {df['emissions_kg'].std():.4f} kg")
-    
-    print(f"\n📊 EMISSIONS BY ARCHITECTURE:")
-    for arch, emissions in backbone_emissions.items():
-        count = len(df[df['backbone'] == arch])
-        print(f"  {arch}: {emissions:.4f} kg (avg), {count} trials")
-    
-    # Calculate carbon efficiency
-    df['carbon_efficiency'] = df['accuracy'] / (df['emissions_kg'] * 1000)  # accuracy per gram CO2
-    print(f"\n⚡ CARBON EFFICIENCY:")
-    print(f"Best: {df['carbon_efficiency'].max():.2f} accuracy points per gram CO2")
-    print(f"Average: {df['carbon_efficiency'].mean():.2f} accuracy points per gram CO2")
-    print(f"Worst: {df['carbon_efficiency'].min():.2f} accuracy points per gram CO2")
 
 
 if __name__ == "__main__":
@@ -352,12 +483,14 @@ if __name__ == "__main__":
                         choices=["fashion", "flowers", "emotions", "skin_cancer"], )
     parser.add_argument("--output-path", type=Path, default=Path("predictions.npy"), help="Path to save predictions.")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility.")
+    parser.add_argument("--carbon-budget", type=float, default=0.15, help="Carbon budget in kg CO2eq")
+    parser.add_argument("--enable-carbon-manager", action="store_true", help="Enable carbon budget manager")
     parser.add_argument("--quiet", action="store_true", help="Log only warnings and errors.")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO if not args.quiet else logging.WARNING)
 
-    # Dataset selection (unchanged)
+    # Dataset selection
     if args.dataset == "fashion":
         dataset_class = FashionDataset
     elif args.dataset == "flowers":
@@ -369,8 +502,18 @@ if __name__ == "__main__":
     else:
         raise ValueError(f"Invalid dataset: {args.dataset}")
 
-    print(f"🌱 AutoML with Carbon Emission Tracking (No Pruning) - {args.dataset.upper()}")
-    print(f"📊 Will track and analyze CO2 emissions without constraints")
+    print(f"🌱 Enhanced AutoML with Carbon Budget Manager - {args.dataset.upper()}")
+    print(f"📊 Carbon Budget: {args.carbon_budget} kg CO2eq")
+    print(f"🧮 Budget Manager: {'Enabled' if args.enable_carbon_manager else 'Disabled'}")
+
+    # Initialize carbon budget manager
+    carbon_budget_manager = None
+    if args.enable_carbon_manager:
+        carbon_budget_manager = CarbonBudgetManager(
+            total_budget_kg=args.carbon_budget,
+            total_trials=args.n_trials
+        )
+        print(f"🎯 Carbon Budget Manager initialized with {args.carbon_budget}kg budget for {args.n_trials} trials")
 
     mean, std = calculate_mean_std(dataset_class)
 
@@ -378,7 +521,7 @@ if __name__ == "__main__":
     default_backbone = "resnet18" if grayscale else "vit_base_patch16_224"
     transform = get_transforms(mean, std, phase="train", backbone_name=default_backbone)
 
-    # Load and split dataset (unchanged)
+    # Load and split dataset
     full_dataset = dataset_class(root="./data", split='train', download=True, transform=transform)
     train_len = int(0.8 * len(full_dataset))
     val_len = len(full_dataset) - train_len
@@ -387,85 +530,93 @@ if __name__ == "__main__":
     sample_loader = DataLoader(train_set, batch_size=8, shuffle=True)
     real_input, real_target = next(iter(sample_loader))
 
-    # Run Zero-Cost Proxy search (unchanged)
+    # Run Zero-Cost Proxy search
     zcc = ZeroCostCandidateGenerator(real_input, real_target, num_candidates=100, top_k=10,
                                      num_classes=dataset_class.num_classes)
     top_k_candidates = [c for c in zcc.get_top_k_candidates() if
                         c['backbone'] in ['resnet18', 'efficientnet_b0', 'vit_base_patch16_224']]
-    candidate_lookup = {f"{c['backbone']}_{i}": (c['backbone'], c['head']) for i, c in enumerate(top_k_candidates)}
     
     print(f"✅ Found {len(top_k_candidates)} top-k candidates based on Zero-Cost scores:")
     for i, c in enumerate(top_k_candidates):
         efficiency = get_architecture_efficiency_weight(c['backbone'])
-        print(
-            f"[{i + 1}] Backbone: {c['backbone']}, Combined Score: {c['combined_score']:.4f}, Efficiency: {efficiency:.1f}")
+        print(f"[{i + 1}] Backbone: {c['backbone']}, Combined Score: {c['combined_score']:.4f}, Efficiency: {efficiency:.1f}")
 
-    # MODIFIED: Standard reference points (3 objectives instead of 5)
-    reference_points = get_standard_reference_points()
+    # Enhanced reference points for carbon-aware optimization
+    reference_points = get_enhanced_reference_points()
 
-    # MODIFIED: Standard NSGA-III sampler for 3 objectives
+    # Enhanced NSGA-III sampler
     sampler = NSGAIIISampler(
-        population_size=30,  # Reduced for 3 objectives
-        mutation_prob=0.1,
+        population_size=50,
+        mutation_prob=0.15,
         crossover_prob=0.9,
         swapping_prob=0.5,
         seed=args.seed,
         reference_points=reference_points
     )
 
-    # MODIFIED: Study with 3 objectives (removed carbon objectives)
+    # Enhanced study with 5 objectives
     study = optuna.create_study(
-        directions=["maximize", "maximize", "minimize"],  # accuracy, f1, time
+        directions=["maximize", "maximize", "minimize", "minimize", "minimize"],
         sampler=sampler,
     )
-
-    # Initialize carbon tracking data
-    carbon_tracker_data = {'trials': []}
 
     # Global carbon tracking
     global_tracker = CarbonGPUTracker("global_optimization")
     global_tracker.start_tracking()
 
-    # MODIFIED: Optimization without carbon constraints
     study.optimize(lambda trial: optuna_objective(
         trial,
         dataset_class=dataset_class,
         seed=args.seed,
         top_k_candidates=top_k_candidates,
-        carbon_tracker_data=carbon_tracker_data  # Pass carbon tracking data
+        carbon_budget_manager=carbon_budget_manager,
+        total_trials=args.n_trials
     ), n_trials=args.n_trials)
 
     global_metrics = global_tracker.stop_tracking()
 
+    # Print carbon budget summary if manager was used
+    if carbon_budget_manager:
+        budget_summary = carbon_budget_manager.get_budget_summary()
+        print(f"\n📊 CARBON BUDGET SUMMARY:")
+        print(f"   Total Budget: {budget_summary['total_budget']:.4f} kg CO2eq")
+        print(f"   Used Budget: {budget_summary['used_budget']:.4f} kg CO2eq")
+        print(f"   Remaining: {budget_summary['remaining_budget']:.4f} kg CO2eq")
+        print(f"   Utilization: {budget_summary['utilization_percent']:.1f}%")
+        
+        # Architecture usage analysis
+        backbone_usage = {}
+        for record in budget_summary['trial_history']:
+            backbone = record['backbone']
+            backbone_usage[backbone] = backbone_usage.get(backbone, 0) + 1
+        
+        print(f"\n🏗️ ARCHITECTURE USAGE:")
+        for arch, count in backbone_usage.items():
+            percentage = 100 * count / len(budget_summary['trial_history'])
+            print(f"   {arch}: {count} trials ({percentage:.1f}%)")
+
     pareto_trials = study.best_trials
     print(f"\n✅ Pareto-optimal solutions ({len(pareto_trials)}):")
     for t in pareto_trials:
-        actual_carbon = t.user_attrs.get('emissions_kg', 0)
         efficiency = t.user_attrs.get('efficiency_weight', 1.0)
+        actual_carbon = t.user_attrs.get('emissions_kg', t.values[3])
         print(f"✅ Acc: {t.values[0]:.4f}, F1: {t.values[1]:.4f}, Time: {t.values[2]:.2f}s, "
-              f"Carbon: {actual_carbon:.4f}kg, Eff: {efficiency:.1f} | {t.params}")
-
-    # Generate carbon emission analysis plots
-    # Safety check before plotting
-    if not carbon_tracker_data.get('trials'):
-        print("⚠️ No carbon tracking data - creating summary from Optuna trials")
-        total_emissions = sum([t.user_attrs.get('emissions_kg', 0) for t in study.trials])
-        print(f"🌱 Total emissions from {len(study.trials)} trials: {total_emissions:.4f} kg")
-    else:
-        plot_carbon_emissions(carbon_tracker_data)
-    # plot_carbon_emissions(carbon_tracker_data)
+              f"Carbon: {actual_carbon:.4f}kg (adj: {t.values[3]:.4f}), GPU: {t.values[4]:.2f}GB, "
+              f"Eff: {efficiency:.1f} | {t.params}")
 
     # Select best accuracy solution
     best_acc_trial = max(pareto_trials, key=lambda t: t.values[0])
     best_params = best_acc_trial.params
     final_epochs = 10 if args.dataset == "flowers" else 8
-    best_id = best_acc_trial.params['candidate_id']
+    
+    # Get backbone and head from best trial
+    best_id = best_params['candidate_id']
+    candidate_lookup = {f"{c['backbone']}_{i}": (c['backbone'], c['head']) for i, c in enumerate(top_k_candidates)}
     backbone, head = candidate_lookup[best_id]
 
     print(f"\n🎯 Selected Best Accuracy Solution: Trial {best_acc_trial.number}")
     print(f"   Performance: Acc={best_acc_trial.values[0]:.4f}, F1={best_acc_trial.values[1]:.4f}")
-    actual_carbon = best_acc_trial.user_attrs.get('emissions_kg', 0)
-    print(f"   Carbon Footprint: {actual_carbon:.4f}kg")
+    print(f"   Sustainability: Carbon={best_acc_trial.values[3]:.4f}kg, GPU={best_acc_trial.values[4]:.2f}GB")
 
     # Final training
     automl = AutoML(
@@ -505,24 +656,21 @@ if __name__ == "__main__":
     else:
         print(f"No test split for dataset '{dataset_class.__name__}'")
 
-    # Final carbon summary
+    # Enhanced carbon summary
     total_emissions = global_metrics['emissions_kg'] + final_metrics['emissions_kg']
-    
-    print(f"\n🌱 TOTAL CARBON FOOTPRINT SUMMARY:")
+    efficiency_used = get_architecture_efficiency_weight(backbone)
+
+    print(f"\n🌱 SUSTAINABILITY SUMMARY:")
     print(f"   Total Carbon Footprint: {total_emissions:.4f} kg CO2eq")
     print(f"   HPO Phase: {global_metrics['emissions_kg']:.4f} kg")
     print(f"   Final Training: {final_metrics['emissions_kg']:.4f} kg")
+    print(f"   Architecture Efficiency: {efficiency_used:.1f} (1.0 = most efficient)")
     print(f"🖥️ Peak GPU Memory: {max(global_metrics['peak_gpu_memory_gb'], final_metrics['peak_gpu_memory_gb']):.2f} GB")
 
-    # Calculate total carbon efficiency
-    # if total_emissions > 0 and not np.isnan(test_labels).any():
-    #     carbon_efficiency = acc / (total_emissions * 1000)  # Accuracy per gram CO2
-    #     print(f"📈 Overall Carbon Efficiency: {carbon_efficiency:.1f} accuracy points per gram CO2")
+    print("✅ Enhanced AutoML with Carbon Budget Manager completed successfully!")
 
-    print("✅ AutoML with Carbon Emission Tracking completed successfully!")
-
-    # Save standard Optuna plots
+    # Save Optuna plots
     save_optuna_visualizations(study)
     save_accuracy_histogram(study)
     save_metric_curves(study)
-    print("✅ All visualizations saved successfully!")
+    print("✅ Optuna visualizations saved successfully!")
