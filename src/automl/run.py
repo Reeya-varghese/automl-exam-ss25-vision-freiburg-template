@@ -436,15 +436,13 @@ def optuna_objective(
         
         lr = trial.suggest_float("lr", 1e-5, 5e-4, log=True)
 
-        # FIX: Always use the full candidate list for Optuna suggest_categorical
-        # This ensures consistent choices across all trials
         all_candidate_ids = list(candidate_lookup.keys())
         candidate_id = trial.suggest_categorical("candidate_id", all_candidate_ids)
         
         # Get backbone and head from the suggested candidate
         backbone, head = candidate_lookup[candidate_id]
 
-        # NEW: Apply carbon budget manager filtering AFTER Optuna selection
+        # Apply carbon budget manager filtering AFTER Optuna selection
         if carbon_budget_manager:
             available_backbones = list(set(c['backbone'] for c in top_k_candidates))
             
@@ -453,21 +451,17 @@ def optuna_objective(
                 available_backbones, trial.number
             )
             
-            # If the Optuna-selected backbone doesn't match budget preference,
-            # find an alternative candidate with the preferred backbone
             if backbone != selected_backbone_from_budget:
                 # Find candidates with the budget-preferred backbone
                 preferred_candidates = [cid for cid, (bb, _) in candidate_lookup.items() 
                                       if bb == selected_backbone_from_budget]
                 
                 if preferred_candidates:
-                    # Randomly select from preferred candidates to maintain some diversity
                     import random
                     candidate_id = random.choice(preferred_candidates)
                     backbone, head = candidate_lookup[candidate_id]
                     print(f"[CARBON BUDGET] Switched from {backbone} to budget-preferred {selected_backbone_from_budget}")
-                # If no preferred candidates available, keep the original Optuna selection
-            
+                
             # Get dynamic training configuration from carbon budget manager
             training_config = carbon_budget_manager.get_dynamic_training_config(backbone, trial.number)
             epochs = training_config['epochs']
@@ -477,18 +471,17 @@ def optuna_objective(
             batch_size = trial.suggest_categorical('batch_size', [16, 32, 64])
             
         else:
-            # ORIGINAL: Progressive configuration (kept for backward compatibility)
+            #Progressive configuration
             progressive_config = get_progressive_config(trial.number, total_trials, enable_progressive)
 
-            # Check if we need to enforce efficient architecture preference
             if progressive_config['prefer_efficient_arch']:
-                # Check if the selected backbone is efficient enough
+   
                 if get_architecture_efficiency_weight(backbone) < 0.8:
                     # Find efficient candidates
                     efficient_candidates = [cid for cid, (bb, _) in candidate_lookup.items()
                                           if get_architecture_efficiency_weight(bb) >= 0.8]
                     if efficient_candidates:
-                        # Replace with a random efficient candidate
+                
                         import random
                         candidate_id = random.choice(efficient_candidates)
                         backbone, head = candidate_lookup[candidate_id]
@@ -505,10 +498,8 @@ def optuna_objective(
         optimizer = trial.suggest_categorical('optimizer', ['adam', 'sgd'])
         use_augmentation = trial.suggest_categorical('use_augmentation', [True])
 
-        # Log the final selection
         print(f"[TRIAL {trial.number}] Selected: {backbone}, Epochs: {epochs}, Batch: {batch_size}")
 
-        # Your existing AutoML training
         automl = AutoML(
             seed=seed,
             num_layers_to_freeze=0,
@@ -612,7 +603,7 @@ if __name__ == "__main__":
     print(f"Progressive Training: {'Enabled' if args.enable_progressive else 'Disabled'}")
     print(f"Carbon Budget Manager: {'Enabled' if args.enable_carbon_manager else 'Disabled'}")
 
-    # NEW: Initialize carbon budget manager
+    # Initialize carbon budget manager
     carbon_budget_manager = None
     if args.enable_carbon_manager:
         carbon_budget_manager = CarbonBudgetManager(
@@ -687,7 +678,6 @@ if __name__ == "__main__":
 
     global_metrics = global_tracker.stop_tracking()
 
-    # Print carbon budget summary if manager was used
     if carbon_budget_manager:
         budget_summary = carbon_budget_manager.get_budget_summary()
         print(f"\n📊 CARBON BUDGET SUMMARY:")
@@ -791,7 +781,7 @@ if __name__ == "__main__":
     print(f"   Total Carbon Footprint: {total_emissions:.4f} kg CO2eq")
     print(f"   HPO Phase: {global_metrics['emissions_kg']:.4f} kg")
     print(f"   Final Training: {final_metrics['emissions_kg']:.4f} kg")
-    print(f"   Architecture Efficiency: {efficiency_used:.1f} (1.0 = most efficient)")
+    
     if carbon_saved_estimate > 0:
         print(f"   Estimated Carbon Saved: {carbon_saved_estimate:.4f} kg CO2eq")
     print(f"Peak GPU Memory: {max(global_metrics['peak_gpu_memory_gb'], final_metrics['peak_gpu_memory_gb']):.2f} GB")
