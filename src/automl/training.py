@@ -124,7 +124,15 @@ class AutoML:
         if subsample is not None:
             train_dataset = Subset(train_dataset, indices)
             val_dataset = Subset(val_dataset, indices)
-        
+        try:
+            sample_from_transformed = train_dataset[train_set.indices[0]][0]
+            sample_from_base = dataset[train_set.indices[0]][0]
+            assert sample_from_transformed.shape == sample_from_base.shape, "Shape mismatch in sample tensors"
+            assert sample_from_transformed.equal(sample_from_base), (
+                "Dataset indexing mismatch – possible data leakage or inconsistent dataset order!"
+        )
+        except Exception as e:
+            print("⚠️ WARNING: Potential indexing mismatch between datasets:", e)
         # Apply the same split indices to both datasets
         train_set = Subset(train_dataset, train_set.indices)
         val_set = Subset(val_dataset, val_set.indices)
