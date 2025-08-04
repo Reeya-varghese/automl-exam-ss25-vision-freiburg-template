@@ -424,23 +424,10 @@ def optuna_objective(
         carbon_budget_kg: float = 0.1,
         enable_progressive: bool = True,
         carbon_budget_manager: CarbonBudgetManager = None,
-        total_trials: int = 10  # Add this parameter
+        total_trials: int = 10
 ) -> Tuple[float, float, float, float, float]:
     """
     Objective function for Optuna multi-objective optimization with carbon and GPU tracking.
-
-    Args:
-        trial (optuna.Trial): Optuna trial object.
-        dataset_class (Any): Dataset class.
-        seed (int): Random seed.
-        top_k_candidates (list): Top candidate model configs.
-        carbon_budget_kg (float): Max carbon allowed per trial.
-        enable_progressive (bool): Whether to use progressive scaling.
-        carbon_budget_manager (CarbonBudgetManager): Carbon budget manager instance.
-        total_trials (int): Total number of Optuna trials.
-
-    Returns:
-        Tuple: (accuracy, f1, training_time, adjusted_carbon, peak_gpu_memory)
     """
 
     # Start carbon tracking
@@ -456,66 +443,79 @@ def optuna_objective(
         
         lr = trial.suggest_float("lr", 1e-5, 5e-4, log=True)
 
-        # NEW: Carbon budget-aware architecture selection
+        # FIX: Always use the full candidate list for Optuna suggest_categorical
+        # This ensures consistent choices across all trials
+        all_candidate_ids = list(candidate_lookup.keys())
+        candidate_id = trial.suggest_categorical("candidate_id", all_candidate_ids)
+        
+        # Get backbone and head from the suggested candidate
+        backbone, head = candidate_lookup[candidate_id]
+
+        # NEW: Apply carbon budget manager filtering AFTER Optuna selection
         if carbon_budget_manager:
-            # Get available backbones
             available_backbones = list(set(c['backbone'] for c in top_k_candidates))
             
-            # Use carbon budget manager for architecture selection
-            selected_backbone = carbon_budget_manager.weighted_architecture_choice(
+            # Check if the selected backbone aligns with carbon budget strategy
+            selected_backbone_from_budget = carbon_budget_manager.weighted_architecture_choice(
                 available_backbones, trial.number
             )
-            # Find a candidate with the selected backbone
-            matching_candidates = [cid for cid, (backbone, _) in candidate_lookup.items() 
-                                 if backbone == selected_backbone]
-            if matching_candidates:
-                candidate_id = trial.suggest_categorical("candidate_id", matching_candidates)
-            else:
-                # Fallback to original selection
-                candidate_id = trial.suggest_categorical("candidate_id", list(candidate_lookup.keys()))
+            
+            # If the Optuna-selected backbone doesn't match budget preference,
+            # find an alternative candidate with the preferred backbone
+            if backbone != selected_backbone_from_budget:
+                # Find candidates with the budget-preferred backbone
+                preferred_candidates = [cid for cid, (bb, _) in candidate_lookup.items() 
+                                      if bb == selected_backbone_from_budget]
+                
+                if preferred_candidates:
+                    # Randomly select from preferred candidates to maintain some diversity
+                    import random
+                    candidate_id = random.choice(preferred_candidates)
+                    backbone, head = candidate_lookup[candidate_id]
+                    print(f"[CARBON BUDGET] Switched from {backbone} to budget-preferred {selected_backbone_from_budget}")
+                # If no preferred candidates available, keep the original Optuna selection
+            
+            # Get dynamic training configuration from carbon budget manager
+            training_config = carbon_budget_manager.get_dynamic_training_config(backbone, trial.number)
+            epochs = training_config['epochs']
+            efficiency_weight = training_config['efficiency_weight']
+            
+            # Use all batch size options for carbon budget manager
+            batch_size = trial.suggest_categorical('batch_size', [16, 32, 64])
+            
         else:
             # ORIGINAL: Progressive configuration (kept for backward compatibility)
             progressive_config = get_progressive_config(trial.number, total_trials, enable_progressive)
 
-            # Dynamic batch size and epochs based on progressive strategy
+            # Check if we need to enforce efficient architecture preference
             if progressive_config['prefer_efficient_arch']:
-                # Bias toward efficient architectures in early trials
-                efficient_candidates = [cid for cid, (backbone, _) in candidate_lookup.items()
-                                        if get_architecture_efficiency_weight(backbone) >= 0.8]
-                if efficient_candidates:
-                    candidate_id = trial.suggest_categorical("candidate_id", efficient_candidates)
-                else:
-                    candidate_id = trial.suggest_categorical("candidate_id", list(candidate_lookup.keys()))
-            else:
-                candidate_id = trial.suggest_categorical("candidate_id", list(candidate_lookup.keys()))
+                # Check if the selected backbone is efficient enough
+                if get_architecture_efficiency_weight(backbone) < 0.8:
+                    # Find efficient candidates
+                    efficient_candidates = [cid for cid, (bb, _) in candidate_lookup.items()
+                                          if get_architecture_efficiency_weight(bb) >= 0.8]
+                    if efficient_candidates:
+                        # Replace with a random efficient candidate
+                        import random
+                        candidate_id = random.choice(efficient_candidates)
+                        backbone, head = candidate_lookup[candidate_id]
+                        print(f"[PROGRESSIVE] Switched to efficient architecture: {backbone}")
 
-        # Get backbone and head
-        backbone, head = candidate_lookup[candidate_id]
-        
-        # NEW: Get dynamic training configuration from carbon budget manager
-        if carbon_budget_manager:
-            training_config = carbon_budget_manager.get_dynamic_training_config(backbone, trial.number)
-            epochs = training_config['epochs']
-            efficiency_weight = training_config['efficiency_weight']
-        else:
-            # ORIGINAL: Progressive configuration
-            progressive_config = get_progressive_config(trial.number, total_trials, enable_progressive)
+            # Get epochs from progressive config
             epochs = trial.suggest_int('epochs', 4, progressive_config['max_epochs'])
             efficiency_weight = get_architecture_efficiency_weight(backbone)
-
-        # Dynamic resource optimization
-        if carbon_budget_manager:
-            batch_size = trial.suggest_categorical('batch_size', [16, 32, 64])
-        else:
-            # ORIGINAL: Progressive batch size
-            progressive_config = get_progressive_config(trial.number, total_trials, enable_progressive)
+            
+            # Progressive batch size
             batch_size_options = [16, 32, 64] if progressive_config['min_batch_size'] <= 16 else [32, 64]
             batch_size = trial.suggest_categorical('batch_size', batch_size_options)
 
         optimizer = trial.suggest_categorical('optimizer', ['adam', 'sgd'])
         use_augmentation = trial.suggest_categorical('use_augmentation', [True])
 
-        # Your existing AutoML training (unchanged - but now uses the fixed AutoML class)
+        # Log the final selection
+        print(f"[TRIAL {trial.number}] Selected: {backbone}, Epochs: {epochs}, Batch: {batch_size}")
+
+        # Your existing AutoML training
         automl = AutoML(
             seed=seed,
             num_layers_to_freeze=0,
