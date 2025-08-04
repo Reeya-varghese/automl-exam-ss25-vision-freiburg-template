@@ -8,39 +8,33 @@ def get_device():
 
 def get_transforms(mean, std, phase="train", backbone_name="resnet18"):
     """
-    Returns image transformation pipeline based on training phase and backbone type.
+    Returns image transformation based on training phase.
     Note: This function now provides BASE transforms only. Augmentation is handled
     separately in the AutoML class to ensure proper train/val splitting.
 
     Args:
         mean (tuple): Dataset mean for normalization.
         std (tuple): Dataset standard deviation for normalization.
-        phase (str): 'train' or 'test' - controls basic augmentation.
+        phase (str): 'train' or 'test' - controls whether augmentations to be applied or not.
         backbone_name (str): Name of the backbone model.
 
     Returns:
         torchvision.transforms.Compose: Composed transformation pipeline.
     """
     is_vit = "vit" in backbone_name.lower()
-    
-    # Base transforms that are always applied
     tf = [transforms.Resize((224, 224))]
 
-    # Only add basic augmentation for train phase
-    # Heavy augmentation (like RandAugment) is handled in AutoML class
     if phase == "train":
         tf += [
-            transforms.RandomRotation(10),  # Reduced from 15 to avoid conflicts
+            transforms.RandomRotation(10),  
             transforms.RandomHorizontalFlip(p=0.5)
         ]
 
     tf.append(transforms.ToTensor())
 
-    # Handle grayscale to RGB conversion for ViT
     if is_vit:
         tf.append(transforms.Lambda(lambda x: x.repeat(3, 1, 1) if x.shape[0] == 1 else x))
 
-    # Normalization should always be last
     tf.append(transforms.Normalize(mean, std))
     
     return transforms.Compose(tf)
@@ -48,7 +42,7 @@ def get_transforms(mean, std, phase="train", backbone_name="resnet18"):
 def get_base_transforms(mean, std, backbone_name="resnet18"):
     """
     Returns base transformation pipeline without any augmentation.
-    Useful for validation sets and when augmentation is handled separately.
+    Useful for validation sets.
 
     Args:
         mean (tuple): Dataset mean for normalization.
@@ -65,11 +59,9 @@ def get_base_transforms(mean, std, backbone_name="resnet18"):
         transforms.ToTensor()
     ]
 
-    # Handle grayscale to RGB conversion for ViT
     if is_vit:
         tf.append(transforms.Lambda(lambda x: x.repeat(3, 1, 1) if x.shape[0] == 1 else x))
 
-    # Normalization
     tf.append(transforms.Normalize(mean, std))
     
     return transforms.Compose(tf)
@@ -119,7 +111,7 @@ def load_vit(grayscale=False):
     Loading Vision Transformer (ViT) model.
     
     Args:
-        grayscale (bool): Whether input is grayscale (handled by transforms).
+        grayscale (bool): Whether input is grayscale.
 
     Returns:
         nn.Module: ViT model with pretrained weights.
@@ -149,7 +141,7 @@ def get_backbone_loader(backbone_name):
 
 def get_model(backbone_name, num_classes, grayscale=False, custom_head=None):
     """
-    Constructs a model by attaching a head to the selected backbone.
+    Constructs a model by attaching a custom head to the selected backbone.
 
     Args:
         backbone_name (str): Identifier of the backbone model.
@@ -185,15 +177,15 @@ def get_model(backbone_name, num_classes, grayscale=False, custom_head=None):
         head = nn.Sequential(
             nn.Flatten(),
             nn.BatchNorm1d(features_dim),
-            nn.Dropout(0.1),  # Added dropout for regularization
+            nn.Dropout(0.1), 
             nn.Linear(features_dim, 2048),
             nn.ReLU(),
             nn.BatchNorm1d(2048),
-            nn.Dropout(0.2),  # Added dropout
+            nn.Dropout(0.2),  
             nn.Linear(2048, 1024),
             nn.ReLU(),
             nn.BatchNorm1d(1024),
-            nn.Dropout(0.2),  # Added dropout
+            nn.Dropout(0.2), 
             nn.Linear(1024, num_classes)
         )
 

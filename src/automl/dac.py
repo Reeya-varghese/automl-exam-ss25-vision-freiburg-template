@@ -28,7 +28,7 @@ class DynamicAlgorithmController:
 
     def update(self, loss):
         """
-        This function, Updates DAC with the latest loss value, check if learning rate needs decay,
+        This function, Updates DAC with the latest loss value, it checks if learning rate needs decay,
         and optionally switch optimizers.
 
         Args:
@@ -69,6 +69,6 @@ class DynamicAlgorithmController:
 
     def get_optimizer(self):
         """
-        Returns the current optimizer (after any potential switch).
+        Returns the current optimizer.
         """
         return self.optimizer
