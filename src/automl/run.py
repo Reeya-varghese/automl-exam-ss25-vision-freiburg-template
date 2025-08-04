@@ -16,7 +16,7 @@ from Zero_cost import ZeroCostCandidateGenerator
 from training import AutoML
 import optuna
 from optuna.samplers import NSGAIIISampler
-
+import traceback
 from Plots import (
     save_optuna_visualizations,
     save_accuracy_histogram,
@@ -294,6 +294,7 @@ def optuna_objective(
 
     except Exception as e:
         logger.error(f"Trial {trial.number} failed: {e}")
+        traceback.print_exc()
         tracker.stop_tracking()
         return 0.0, 0.0, 999.0, 999.0, 999.0
 
