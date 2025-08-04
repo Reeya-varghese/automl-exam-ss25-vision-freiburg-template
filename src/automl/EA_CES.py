@@ -165,9 +165,11 @@ def optuna_objective(
         candidate_id = trial.suggest_categorical("candidate_id", list(candidate_lookup.keys()))
 
         # Standard resource optimization (no restrictions)
-        epochs = trial.suggest_int('epochs', 4, standard_config['max_epochs'])
+        # epochs = trial.suggest_int('epochs', 4, standard_config['max_epochs'])
+        epochs = trial.suggest_int('epochs', 10, 18)
         batch_size_options = [16, 32, 64]
-        batch_size = trial.suggest_categorical('batch_size', batch_size_options)
+        # batch_size = trial.suggest_categorical('batch_size', batch_size_options)
+        batch_size = trial.suggest_categorical('batch_size', [8, 16])
 
         optimizer = trial.suggest_categorical('optimizer', ['adam', 'sgd'])
         backbone, head = candidate_lookup[candidate_id]
