@@ -10,6 +10,7 @@ import numpy as np
 from torch.utils.data import DataLoader
 from sklearn.metrics import accuracy_score, f1_score
 import threading
+import os
 from codecarbon import EmissionsTracker
 
 from Zero_cost import ZeroCostCandidateGenerator
