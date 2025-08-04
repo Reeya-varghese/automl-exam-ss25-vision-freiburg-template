@@ -162,7 +162,10 @@ def optuna_objective(
         standard_config = get_standard_config()
 
         # Standard candidate selection (no efficiency bias)
-        candidate_id = trial.suggest_categorical("candidate_id", list(candidate_lookup.keys()))
+        if 'vit' not in candidate_id:
+            candidate_id = trial.suggest_categorical("candidate_id", 
+                [cid for cid in candidate_lookup.keys() if 'vit' in cid])
+        #candidate_id = trial.suggest_categorical("candidate_id", list(candidate_lookup.keys()))
 
         # Standard resource optimization (no restrictions)
         # epochs = trial.suggest_int('epochs', 4, standard_config['max_epochs'])
