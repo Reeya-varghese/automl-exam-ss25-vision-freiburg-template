@@ -24,6 +24,12 @@ from model import get_transforms
 from utils import calculate_mean_std
 from vision_datasets import FashionDataset, FlowersDataset, EmotionsDataset, SkinCancerDataset
 from torch.utils.data import random_split
+
+warnings.filterwarnings("ignore")
+logging.getLogger("codecarbon").setLevel(logging.ERROR)
+logging.getLogger("codecarbon").propagate = False
+
+# ---------------------------------------------
 logger = logging.getLogger(__name__)
 
 
@@ -52,12 +58,14 @@ class CarbonGPUTracker:
 
         # Initialize CodeCarbon tracker
         tracker_name = f"{self.project_name}_trial_{trial_id}" if trial_id else self.project_name
-        self.emissions_tracker = EmissionsTracker(
-            project_name=tracker_name,
-            measure_power_secs=15,
-            save_to_file=True,
-            log_level="WARNING"
-        )
+        with contextlib.redirect_stdout(open(os.devnull, 'w')):
+            from codecarbon import EmissionsTracker
+            self.emissions_tracker = EmissionsTracker(
+                project_name=tracker_name,
+                measure_power_secs=15,
+                save_to_file=True,
+                log_level="error"
+            )
         self.emissions_tracker.start()
 
         # Reset GPU memory stats
@@ -118,6 +126,7 @@ def get_architecture_efficiency_weight(backbone_name):
     return efficiency_weights.get(backbone_name, 0.5)
 
 
+# NEW: Progressive training strategy
 def get_progressive_config(trial_number, total_trials, enable_progressive=True):
     """
     Return training config with progressive scaling based on trial number.
@@ -494,8 +503,8 @@ if __name__ == "__main__":
     print(f"   Total Carbon Footprint: {total_emissions:.4f} kg CO2eq")
     print(f"   HPO Phase: {global_metrics['emissions_kg']:.4f} kg")
     print(f"   Final Training: {final_metrics['emissions_kg']:.4f} kg")
-    print(f"   Architecture Efficiency: {efficiency_used:.1f} (1.0 = most efficient)")
-    print(f"   Estimated Carbon Saved: {carbon_saved_estimate:.4f} kg CO2eq")
+
+
     print(
         f"Peak GPU Memory: {max(global_metrics['peak_gpu_memory_gb'], final_metrics['peak_gpu_memory_gb']):.2f} GB")
 

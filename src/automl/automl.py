@@ -14,6 +14,12 @@ from automl.utils import calculate_mean_std
 logger = logging.getLogger(__name__)
 
 class AutoML:
+    """
+    Automated Machine Learning class for image classification using multiple backbone models.
+    
+    Supports hyperparameter optimization with Optuna and provides prediction
+    functionality with configurable data augmentation with randaug. 
+    """
     def __init__(
         self,
         seed: int,
@@ -26,6 +32,20 @@ class AutoML:
         num_layers_to_freeze: int = 0,
         optimizer_name: str = "adam",
     ) -> None:
+        
+        """
+        Initialize AutoML instance
+        
+        Args:
+            seed: Random seed for reproducibility
+            lr: Learning rate for optimizer
+            batch_size: Batch size for training and validation
+            epochs: Number of training epochs
+            use_augmentation: Whether to apply data augmentation with randaug
+            backbone: Multiple backbone architecture (s) (e.g., 'resnet18', 'resnet50')
+            optimizer_name: Optimizer type ('adam' or 'sgd')
+            trial: Optuna trial object for hyperparameter optimization
+        """
         self.seed = seed
         self.lr = lr
         self.backbone = backbone
@@ -39,6 +59,17 @@ class AutoML:
         self._model: nn.Module | None = None
 
     def fit(self, dataset_class: any, subsample: int = None) -> "AutoML":
+        """
+        Train the model on the given dataset.
+        
+        Args:
+            dataset_class: Dataset class to train on
+            subsample: Number of samples to use for training (None for full dataset)
+            train_split: Fraction of data to use for training vs validation
+            
+        Returns:
+            Self for method chaining
+        """
         random.seed(self.seed)
         np.random.seed(self.seed)
         torch.manual_seed(self.seed)
@@ -153,10 +184,23 @@ class AutoML:
         return predictions, labels
 
 def optuna_objective(trial, dataset_class, seed=42):
+     """
+    Optuna objective function for hyperparameter optimization.
+    
+    Args:
+        trial: Optuna trial object
+        dataset_class: Dataset class to optimize on
+        seed: Random seed for reproducibility
+        subsample_size: Number of samples to use for optimization
+        epochs: Number of training epochs
+        
+    Returns:
+        Test accuracy score
+    """
     lr = trial.suggest_float('lr', 1e-4, 1e-2, log=True)
     batch_size = trial.suggest_categorical('batch_size', [32, 64])
     optimizer_name = trial.suggest_categorical('optimizer', ['adam', 'sgd'])
-    backbone = "resnet18"  
+    backbone = "resnet18"   #fallback backbone 
     use_augmentation = True
     epochs = 8  
     automl = AutoML(

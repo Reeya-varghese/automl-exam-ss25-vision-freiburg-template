@@ -8,6 +8,18 @@ from model import get_backbone_loader
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 class ZeroCostCandidateGenerator:
+    """
+    This class generates and ranks random neural network heads for given backbone models using zero-cost proxies
+    Jacobian norm and GradNorm.
+
+    Args:
+        real_input (Tensor): Sample input tensor.
+        real_target (Tensor): Corresponding target labels for the input.
+        num_candidates (int): Number of random head candidates to evaluate.
+        top_k (int): Number of top candidates to return.
+        num_classes (int): Number of output classes for the classification task.
+    """
+    
     def __init__(self, real_input, real_target, num_candidates=100, top_k=10, num_classes=7):
         self.real_input = real_input.to(DEVICE)
         self.real_target = real_target.to(DEVICE)
@@ -16,22 +28,43 @@ class ZeroCostCandidateGenerator:
         self.num_classes = num_classes
         self.device = DEVICE
         grayscale = self.real_input.shape[1] == 1
-
-        # ✅ Only allowed backbones
+    
         self.BACKBONE_NAMES = ["resnet18", "efficientnet_b0", "vit_base_patch16_224"]
+
         self.backbones = {
             name: get_backbone_loader(name)(grayscale=grayscale).to(self.device).eval()
             for name in self.BACKBONE_NAMES
         }
 
-    def get_jacobian_score(self, model, input_tensor):
+    def jacobian_score(self, model, input_tensor):
+        """
+        Computes the Jacobian norm score.
+
+        Args:
+            model (nn.Module): The head model to evaluate.
+            input_tensor (Tensor): Feature input to the head.
+
+        Returns:
+            float: Jacobian norm score.
+        """
         model.eval()
         input_tensor = input_tensor.requires_grad_(True)
         output = model(input_tensor)
         jacobian = torch.autograd.grad(outputs=output.sum(), inputs=input_tensor, create_graph=True)[0]
         return jacobian.norm().item()
 
-    def get_gradnorm_score(self, model, input_tensor, target_tensor):
+    def gradnorm_score(self, model, input_tensor, target_tensor):
+        """
+        Computes the GradNorm score.
+
+        Args:
+            model (nn.Module): The head model to evaluate.
+            input_tensor (Tensor): Feature input to the head.
+            target_tensor (Tensor): Ground truth labels.
+
+        Returns:
+            float: Sum of gradient norms over all model parameters.
+        """
         model.train()
         model.zero_grad()
         output = model(input_tensor)
@@ -40,6 +73,15 @@ class ZeroCostCandidateGenerator:
         return sum(p.grad.norm().item() for p in model.parameters() if p.grad is not None)
 
     def generate_random_head(self, input_dim):
+        """
+        Generates a random classification head with varying architecture.
+
+        Args:
+            input_dim (int): Input feature dimension from the backbone.
+
+        Returns:
+            nn.Sequential: A sequential head network.
+        """
         hidden_dim = random.choice([
             [1024, 512],
             [2048, 1024, 512],
@@ -65,10 +107,30 @@ class ZeroCostCandidateGenerator:
         return nn.Sequential(*layers)
 
     def normalize(self, score_list):
+        """
+        Normalizes a list of scores to the [0, 1] range.
+
+        Args:
+            score_list (List[float]): List of raw scores.
+
+        Returns:
+            List[float]: Normalized scores.
+        """
         min_val, max_val = min(score_list), max(score_list)
         return [(s - min_val) / (max_val - min_val + 1e-8) for s in score_list]
 
     def extract_features(self, backbone, backbone_name, input_tensor):
+        """
+        Extracts features from a backbone.
+
+        Args:
+            backbone (nn.Module): Backbone network.
+            backbone_name (str): Identifier for the backbone architecture.
+            input_tensor (Tensor): Input image tensor.
+
+        Returns:
+            Tensor: Extracted feature tensor.
+        """
         with torch.no_grad():
             if "vit" in backbone_name:
                 features = backbone.forward_features(input_tensor)
@@ -85,25 +147,43 @@ class ZeroCostCandidateGenerator:
                 raise ValueError(f"Unsupported backbone: {backbone_name}")
 
     def get_feature_dim(self, model, backbone_name):
+        """
+        Args:
+            model (nn.Module): The backbone network.
+            backbone_name (str): Identifier for the backbone.
+
+        Returns:
+            int: Dimension of the extracted features.
+        """
         model.eval()
         dummy_input = torch.randn(1, self.real_input.shape[1], 224, 224).to(self.device)
         if "vit" in backbone_name and dummy_input.shape[1] == 1:
-            dummy_input = dummy_input.repeat(1, 3, 1, 1)  # Expand grayscale to 3 channels for ViT
+            dummy_input = dummy_input.repeat(1, 3, 1, 1)  # Expand grayscale to RGB
         feats = self.extract_features(model, backbone_name, dummy_input)
         return feats.shape[-1]
 
     def get_top_k_candidates(self):
+        """
+        Ranks candidate architectures based on zero-cost metrics.
+
+        Returns:
+            List[Dict]: Top-k ranked candidates with scores.
+        """
         candidates = []
 
         for i in range(self.num_candidates):
             backbone_name = random.choice(self.BACKBONE_NAMES)
+
+            # Handle grayscale input expansion for ViT
             input_tensor = self.real_input.repeat(1, 3, 1, 1) if "vit" in backbone_name and self.real_input.shape[1] == 1 else self.real_input
             backbone = self.backbones[backbone_name]
             feat_dim = self.get_feature_dim(backbone, backbone_name)
+
             head = self.generate_random_head(feat_dim).to(self.device)
             feats = self.extract_features(backbone, backbone_name, input_tensor)
-            jac = self.get_jacobian_score(head, feats)
-            grad = self.get_gradnorm_score(head, feats, self.real_target)
+
+            jac = self.jacobian_score(head, feats)
+            grad = self.gradnorm_score(head, feats, self.real_target)
 
             candidates.append({
                 "backbone": backbone_name,
@@ -113,6 +193,7 @@ class ZeroCostCandidateGenerator:
                 "id": f"{backbone_name}_{i}"
             })
 
+        # Normalize and combine scores
         jac_norm = self.normalize([c["jacobian_score"] for c in candidates])
         grad_norm = self.normalize([c["gradnorm_score"] for c in candidates])
         for i, c in enumerate(candidates):
