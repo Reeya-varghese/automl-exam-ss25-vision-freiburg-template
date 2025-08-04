@@ -275,7 +275,7 @@ def optuna_objective(
             custom_head=head
         )
         start = time.time()
-        print(head)
+        #print(head)
 
         automl.fit(dataset_class, subsample=2000, trial=trial)
         training_time = time.time() - start
@@ -518,7 +518,7 @@ if __name__ == "__main__":
     print("Enhanced AutoML with Combined Carbon Strategies completed successfully!")
 
     # Save Optuna plots
-    save_optuna_visualizations(study)
+   # save_optuna_visualizations(study)
     save_accuracy_histogram(study)
     save_metric_curves(study)
     print("Optuna visualizations saved successfully!")
