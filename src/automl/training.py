@@ -113,8 +113,7 @@ class AutoML:
 
         
         # Build sampler based only on train_set
-        train_targets = [train_set.dataset.dataset[i][1] if hasattr(train_set.dataset, 'dataset') 
-                        else train_set.dataset[i][1] for i in train_set.indices]
+        train_targets = [train_set.base_dataset[i][1] for i in train_set.indices]
         class_counts = np.bincount(train_targets)
         weights = 1. / class_counts[train_targets]
         sampler = WeightedRandomSampler(weights, len(train_targets))
