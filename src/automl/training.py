@@ -11,7 +11,7 @@ import optuna
 from model import get_model, get_transforms
 from utils import calculate_mean_std
 from torch.utils.data import Subset, random_split
-from dac import DynamicAdjustmentController
+from dac import DynamicAlgorithmController
 from torchvision import transforms
 
 logger = logging.getLogger(__name__)
