@@ -9,26 +9,69 @@ def get_device():
 def get_transforms(mean, std, phase="train", backbone_name="resnet18"):
     """
     Returns image transformation pipeline based on training phase and backbone type.
+    Note: This function now provides BASE transforms only. Augmentation is handled
+    separately in the AutoML class to ensure proper train/val splitting.
 
     Args:
-        phase (str): 'train' or 'test' to control augmentation.
-        backbone_name (str): Name of the backbone.
+        mean (tuple): Dataset mean for normalization.
+        std (tuple): Dataset standard deviation for normalization.
+        phase (str): 'train' or 'test' - controls basic augmentation.
+        backbone_name (str): Name of the backbone model.
 
     Returns:
         torchvision.transforms.Compose: Composed transformation pipeline.
     """
     is_vit = "vit" in backbone_name.lower()
+    
+    # Base transforms that are always applied
     tf = [transforms.Resize((224, 224))]
 
+    # Only add basic augmentation for train phase
+    # Heavy augmentation (like RandAugment) is handled in AutoML class
     if phase == "train":
-        tf += [transforms.RandomRotation(15), transforms.RandomHorizontalFlip()]
+        tf += [
+            transforms.RandomRotation(10),  # Reduced from 15 to avoid conflicts
+            transforms.RandomHorizontalFlip(p=0.5)
+        ]
 
     tf.append(transforms.ToTensor())
 
+    # Handle grayscale to RGB conversion for ViT
     if is_vit:
         tf.append(transforms.Lambda(lambda x: x.repeat(3, 1, 1) if x.shape[0] == 1 else x))
 
+    # Normalization should always be last
     tf.append(transforms.Normalize(mean, std))
+    
+    return transforms.Compose(tf)
+
+def get_base_transforms(mean, std, backbone_name="resnet18"):
+    """
+    Returns base transformation pipeline without any augmentation.
+    Useful for validation sets and when augmentation is handled separately.
+
+    Args:
+        mean (tuple): Dataset mean for normalization.
+        std (tuple): Dataset standard deviation for normalization.
+        backbone_name (str): Name of the backbone model.
+
+    Returns:
+        torchvision.transforms.Compose: Base transformation pipeline.
+    """
+    is_vit = "vit" in backbone_name.lower()
+    
+    tf = [
+        transforms.Resize((224, 224)),
+        transforms.ToTensor()
+    ]
+
+    # Handle grayscale to RGB conversion for ViT
+    if is_vit:
+        tf.append(transforms.Lambda(lambda x: x.repeat(3, 1, 1) if x.shape[0] == 1 else x))
+
+    # Normalization
+    tf.append(transforms.Normalize(mean, std))
+    
     return transforms.Compose(tf)
 
 def load_resnet18(grayscale=False):
@@ -39,7 +82,8 @@ def load_resnet18(grayscale=False):
         grayscale (bool): adjust input layer for grayscale images.
 
     Returns:
-        nn.Module: Modified ResNet18 model."""
+        nn.Module: Modified ResNet18 model.
+    """
     
     model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
     if grayscale:
@@ -53,11 +97,13 @@ def load_resnet18(grayscale=False):
 def load_efficientnet_b0(grayscale=False):
     """
     Loads EfficientNet-B0 model. Modifies the first conv layer if grayscale is True.
+    
     Args:
         grayscale (bool): adjust input layer for grayscale images.
 
     Returns:
-        nn.Module: Modified EfficientNet-B0 model."""
+        nn.Module: Modified EfficientNet-B0 model.
+    """
     
     model = timm.create_model('efficientnet_b0', pretrained=True)
     if grayscale:
@@ -69,9 +115,11 @@ def load_efficientnet_b0(grayscale=False):
     return model
 
 def load_vit(grayscale=False):
-    """ Loading Vision Transformer (ViT) model.
+    """
+    Loading Vision Transformer (ViT) model.
+    
     Args:
-        grayscale (bool): 
+        grayscale (bool): Whether input is grayscale (handled by transforms).
 
     Returns:
         nn.Module: ViT model with pretrained weights.
@@ -106,8 +154,8 @@ def get_model(backbone_name, num_classes, grayscale=False, custom_head=None):
     Args:
         backbone_name (str): Identifier of the backbone model.
         num_classes (int): Number of output classes for classification.
-        grayscale (bool): grayscale images.
-        custom_head (nn.Module): Fallback custom head module.
+        grayscale (bool): Whether input images are grayscale.
+        custom_head (nn.Module): Optional custom head module.
 
     Returns:
         nn.Sequential: Combined model (backbone + head).
@@ -130,16 +178,23 @@ def get_model(backbone_name, num_classes, grayscale=False, custom_head=None):
     else:
         raise ValueError(f"Unsupported backbone: {backbone_name}")
     
-    head = custom_head or nn.Sequential(
-        nn.Flatten(),
-        nn.BatchNorm1d(features_dim),
-        nn.Linear(features_dim, 2048),
-        nn.ReLU(),
-        nn.BatchNorm1d(2048),
-        nn.Linear(2048, 1024),
-        nn.ReLU(),
-        nn.BatchNorm1d(1024),
-        nn.Linear(1024, num_classes)
-    )
+    # Use custom head if provided, otherwise use default head
+    if custom_head is not None:
+        head = custom_head
+    else:
+        head = nn.Sequential(
+            nn.Flatten(),
+            nn.BatchNorm1d(features_dim),
+            nn.Dropout(0.1),  # Added dropout for regularization
+            nn.Linear(features_dim, 2048),
+            nn.ReLU(),
+            nn.BatchNorm1d(2048),
+            nn.Dropout(0.2),  # Added dropout
+            nn.Linear(2048, 1024),
+            nn.ReLU(),
+            nn.BatchNorm1d(1024),
+            nn.Dropout(0.2),  # Added dropout
+            nn.Linear(1024, num_classes)
+        )
 
     return nn.Sequential(backbone, head)

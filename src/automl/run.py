@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 from sklearn.metrics import accuracy_score, f1_score
 import threading
 from codecarbon import EmissionsTracker
-
+import os
 from Zero_cost import ZeroCostCandidateGenerator
 from training import AutoML
 import optuna
@@ -262,7 +262,7 @@ def optuna_objective(
         #Get architecture efficiency weight
         efficiency_weight = get_architecture_efficiency_weight(backbone)
 
-        # Your existing AutoML training (unchanged)
+        # Your existing AutoML training (unchanged - but now uses the fixed AutoML class)
         automl = AutoML(
             seed=seed,
             num_layers_to_freeze=0,
@@ -360,7 +360,10 @@ if __name__ == "__main__":
 
     grayscale = dataset_class.channels == 1
     default_backbone = "resnet18" if grayscale else "vit_base_patch16_224"
-    transform = get_transforms(mean, std, phase="train", backbone_name=default_backbone)
+    
+    # Use base transform for initial dataset loading (no augmentation)
+    # This ensures the zero-cost proxy gets clean data
+    transform = get_transforms(mean, std, phase="test", backbone_name=default_backbone)
 
     # Load and split dataset
     full_dataset = dataset_class(root="./data", split='train', download=True, transform=transform)
@@ -459,12 +462,12 @@ if __name__ == "__main__":
     print(f"   Performance: Acc={best_acc_trial.values[0]:.4f}, F1={best_acc_trial.values[1]:.4f}")
     print(f"   Sustainability: Carbon={best_acc_trial.values[3]:.4f}kg, GPU={best_acc_trial.values[4]:.2f}GB")
 
-    # Final training (unchanged logic)
+    # Final training with the corrected AutoML class
     automl = AutoML(
         seed=args.seed,
         num_layers_to_freeze=0,
         lr=best_params.get("lr", 0.001),
-        use_augmentation=True,
+        use_augmentation=True,  # This will now be applied correctly only to training data
         backbone=backbone,
         batch_size=best_params.get("batch_size", 32),
         epochs=final_epochs,
@@ -475,6 +478,7 @@ if __name__ == "__main__":
     final_tracker = CarbonGPUTracker("final_training")
     final_tracker.start_tracking()
 
+    # The fit method now handles augmentation correctly
     automl.fit(dataset_class, subsample=None)
     test_preds, test_labels = automl.predict(dataset_class)
 
