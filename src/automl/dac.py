@@ -46,7 +46,7 @@ class DynamicAlgorithmController:
         # Switch optimizer from Adam to SGD at a specified epoch
         if self.epoch == self.switch_optimizer_epoch and not self.optimizer_switched:
             if isinstance(self.optimizer, torch.optim.Adam):
-                logger.info("🔁 DAC: Switching optimizer from Adam to SGD")
+                logger.info("DAC: Switching optimizer from Adam to SGD")
                 params = self.optimizer.param_groups[0]['params']
                 lr = self.optimizer.param_groups[0]['lr']
                 self.optimizer = torch.optim.SGD(params, lr=lr, momentum=0.9)

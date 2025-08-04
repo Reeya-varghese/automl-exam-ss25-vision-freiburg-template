@@ -17,6 +17,17 @@ from torchvision import transforms
 logger = logging.getLogger(__name__)
 
 class TransformedSubset(torch.utils.data.Dataset):
+    """
+    A dataset wrapper that applies a given transform only 
+    to a specified subset of a base dataset.
+
+    Args:
+        base_dataset (Dataset): dataset.
+        indices (List[int]): Indices specifying which 
+            samples to include from the base dataset.
+        transform (callable): A transform function to apply 
+            only when samples are accessed.
+    """
     def __init__(self, base_dataset, indices, transform):
         self.base_dataset = base_dataset
         self.indices = indices
@@ -48,7 +59,7 @@ class AutoML:
 
         Args:
             seed (int): Random seed for reproducibility.
-            num_layers_to_freeze (int): Number of layers to freeze (not used in current version).
+            num_layers_to_freeze (int): Number of layers to freeze.
             lr (float): Learning rate.
             use_augmentation (bool): Whether to apply RandAugment on training data.
             backbone (str): Model backbone architecture name.
