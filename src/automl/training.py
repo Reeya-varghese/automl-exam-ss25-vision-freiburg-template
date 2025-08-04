@@ -155,7 +155,7 @@ class AutoML:
             optimizer = optim.SGD(model.parameters(), lr=self.lr, momentum=0.9)
 
         print(f"[DEBUG] DAC ENABLED for {dataset_class.__name__}")
-        self.dac = DynamicAdjustmentController(optimizer, initial_lr=self.lr)
+        self.dac = DynamicAlgorithmController(optimizer, initial_lr=self.lr)
 
         criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
         self._history = {"loss": [], "acc": [], "val_loss": [], "val_acc": []}
