@@ -277,7 +277,7 @@ def optuna_objective(
         start = time.time()
         #print(head)
 
-        automl.fit(dataset_class, subsample=2000, trial=trial)
+        automl.fit(dataset_class, subsample=None, trial=trial)
         training_time = time.time() - start
         logger.info(f"Training time: {training_time:.2f} seconds")
         trial.set_user_attr("head_type", head.__class__.__name__)
