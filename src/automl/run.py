@@ -610,7 +610,7 @@ if __name__ == "__main__":
             total_budget_kg=args.carbon_budget,
             total_trials=args.n_trials
         )
-        print(f"🎯 Carbon Budget Manager initialized with {args.carbon_budget}kg budget for {args.n_trials} trials")
+        print(f"Carbon Budget Manager initialized with {args.carbon_budget}kg budget for {args.n_trials} trials")
 
     mean, std = calculate_mean_std(dataset_class)
 
@@ -680,7 +680,7 @@ if __name__ == "__main__":
 
     if carbon_budget_manager:
         budget_summary = carbon_budget_manager.get_budget_summary()
-        print(f"\n📊 CARBON BUDGET SUMMARY:")
+        print(f"\n CARBON BUDGET SUMMARY:")
         print(f"   Total Budget: {budget_summary['total_budget']:.4f} kg CO2eq")
         print(f"   Used Budget: {budget_summary['used_budget']:.4f} kg CO2eq")
         print(f"   Remaining: {budget_summary['remaining_budget']:.4f} kg CO2eq")
@@ -692,7 +692,7 @@ if __name__ == "__main__":
             backbone = record['backbone']
             backbone_usage[backbone] = backbone_usage.get(backbone, 0) + 1
         
-        print(f"\n🏗️ ARCHITECTURE USAGE:")
+        print(f"\n ARCHITECTURE USAGE:")
         for arch, count in backbone_usage.items():
             percentage = 100 * count / len(budget_summary['trial_history'])
             print(f"   {arch}: {count} trials ({percentage:.1f}%)")

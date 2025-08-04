@@ -45,7 +45,7 @@ def save_optuna_visualizations(study, prefix=""):
         print(f"⚠️ Optuna visualization error: {e}")
 
 
-def save_accuracy_histogram(study, path="accuracy_hist_EA.png"):
+def save_accuracy_histogram(study, path="accuracy_hist.png"):
     try:
         accs = [t.values[0] for t in study.trials if t.values is not None]
         plt.figure()
@@ -61,7 +61,7 @@ def save_accuracy_histogram(study, path="accuracy_hist_EA.png"):
         print(f"⚠️ Histogram plot error: {e}")
 
 
-def save_metric_curves(study, acc_path="trials_accuracy_EA_SH.png", loss_path="trials_loss_EA_SH.png"):
+def save_metric_curves(study, acc_path="trials_accuracy.png", loss_path="trials_loss.png"):
     try:
         # Accuracy Curves
         plt.figure(figsize=(10, 5))

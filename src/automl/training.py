@@ -43,6 +43,20 @@ class AutoML:
             custom_head: nn.Module = None,
             optimizer='adam'
     ) -> None:
+        """
+        Initialize AutoML instance.
+
+        Args:
+            seed (int): Random seed for reproducibility.
+            num_layers_to_freeze (int): Number of layers to freeze (not used in current version).
+            lr (float): Learning rate.
+            use_augmentation (bool): Whether to apply RandAugment on training data.
+            backbone (str): Model backbone architecture name.
+            batch_size (int): Training batch size.
+            epochs (int): Number of training epochs.
+            custom_head (nn.Module): Optional custom classification head.
+            optimizer (str): 'adam' or 'sgd'.
+        """
         self.seed = seed
         self.num_layers_to_freeze = num_layers_to_freeze
         self.optimizer = optimizer
@@ -55,7 +69,7 @@ class AutoML:
         self._model: nn.Module | None = None
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self._set_seed()
-        self.dac = None  # Will be initialized conditionally
+        self.dac = None  
 
     @property
     def model(self):
@@ -74,16 +88,23 @@ class AutoML:
         torch.backends.cudnn.benchmark = False
 
     def fit(self, dataset_class: Any, subsample: int = None, trial: optuna.trial.Trial = None) -> "AutoML":
+        """
+        Train the model on a dataset.
 
-        # Load dataset ONCE without transform
+        Args:
+            dataset_class (Any): Dataset class.
+            subsample (int): If set, use only a subset of training samples.
+            trial (optuna.trial.Trial): Current Optuna trial.
+        Returns:
+            AutoML: Self instance with trained model.
+        """
         base_dataset = dataset_class(
             root="./data",
             split='train',
             download=True,
-            transform=None  # no transform yet
+            transform=None 
         )
 
-        # Optional subsampling
         if subsample is not None:
             indices = np.random.choice(len(base_dataset), subsample, replace=False)
             base_dataset = Subset(base_dataset, indices)
@@ -104,7 +125,6 @@ class AutoML:
         train_transform = transforms.Compose([rand_augment, base_transform]) if self.use_augmentation else base_transform
         val_transform = base_transform  # no augmentation for validation
 
-# Wrap subsets with transforms
         train_indices = train_indices.indices if isinstance(train_indices, Subset) else train_indices
         val_indices = val_indices.indices if isinstance(val_indices, Subset) else val_indices
 
@@ -112,7 +132,7 @@ class AutoML:
         val_set = TransformedSubset(base_dataset, val_indices, val_transform)
 
         
-        # Build sampler based only on train_set
+       # Create class-balanced sampler
         train_targets = [train_set.base_dataset[i][1] for i in train_set.indices]
         class_counts = np.bincount(train_targets)
         weights = 1. / class_counts[train_targets]
@@ -135,7 +155,8 @@ class AutoML:
             optimizer = optim.Adam(model.parameters(), lr=self.lr)
         else:
             optimizer = optim.SGD(model.parameters(), lr=self.lr, momentum=0.9)
-
+        
+        #Dynamic LR controller
         print(f"[DEBUG] DAC ENABLED for {dataset_class.__name__}")
         self.dac = DynamicAlgorithmController(optimizer, initial_lr=self.lr)
 
@@ -146,6 +167,7 @@ class AutoML:
         wait = 0
         best_model_state = None
 
+        # Train loop
         model.train()
         for epoch in range(self.epochs):
             loss_per_batch = []
@@ -167,6 +189,7 @@ class AutoML:
             self._history["loss"].append(epoch_loss)
             self._history["acc"].append(epoch_acc)
 
+            # Validation loop
             val_loss_per_batch = []
             val_preds = []
             val_targets = []
@@ -190,7 +213,7 @@ class AutoML:
                 f"Epoch {epoch + 1}, Loss: {epoch_loss:.4f}, Acc: {epoch_acc:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}")
             print(
                 f"Epoch {epoch + 1}, Loss: {epoch_loss:.4f}, Acc: {epoch_acc:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}")
-
+            # DAC Learning Rate Update  
             if self.dac:
                 self.dac.update(epoch_loss)
                 optimizer = self.dac.get_optimizer()
@@ -202,7 +225,7 @@ class AutoML:
             else:
                 wait += 1
                 if wait >= patience:
-                    print(f"⏹️ Early stopping at epoch {epoch + 1} — Best Val Acc: {best_val_acc:.4f}")
+                    print(f" Early stopping at epoch {epoch + 1} — Best Val Acc: {best_val_acc:.4f}")
                     break
             model.train()
 
@@ -218,6 +241,15 @@ class AutoML:
         return self
 
     def predict_on(self, dataset_class: Any, split="test") -> Tuple[np.ndarray, np.ndarray]:
+        """
+        prediction on any dataset split. test or val.
+        Args:
+            dataset_class (Any): Dataset class to load.
+            split (str): Dataset split to evaluate on ('test' or 'val').
+
+        Returns:
+            Tuple[np.ndarray, np.ndarray]: Predicted and true labels.
+        """
         mean, std = calculate_mean_std(dataset_class)
         test_transform = get_transforms(mean, std, phase="test", backbone_name=self.backbone)
         dataset = dataset_class(root="./data", split=split, download=True, transform=test_transform)
@@ -238,10 +270,25 @@ class AutoML:
         return predictions, labels
 
     def predict(self, dataset_class: Any) -> np.ndarray:
+        """
+        Provides a clean, single-line interface to predict on the test set
+        without needing to specify the split explicitly.
+
+        Args:
+            dataset_class (Any): Dataset class.
+        Returns:
+            Tuple[np.ndarray, np.ndarray]: Predicted and true labels.
+        """
         preds, labels = self.predict_on(dataset_class, split="test")
         return preds, labels
 
     def evaluate_on_val(self) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Evaluate trained model on validation set.
+
+        Returns:
+            Tuple[np.ndarray, np.ndarray]: Predicted and true labels.
+        """
         data_loader = DataLoader(self._val_set, batch_size=self.batch_size, shuffle=False)
         predictions, labels = [], []
         self._model.eval()
