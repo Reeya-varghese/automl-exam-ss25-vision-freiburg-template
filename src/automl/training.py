@@ -5,15 +5,13 @@ from copy import deepcopy
 import numpy as np
 from torch import nn, optim
 from torch.utils.data import DataLoader, WeightedRandomSampler
-from sklearn.model_selection import StratifiedShuffleSplit
-
 from sklearn.metrics import accuracy_score
 import random
 import optuna
 from model import get_model, get_transforms
 from utils import calculate_mean_std
 from torch.utils.data import Subset, random_split
-from dac import DynamicAlgorithmController
+from dac import DynamicAdjustmentController
 from torchvision import transforms
 
 logger = logging.getLogger(__name__)
@@ -65,43 +63,81 @@ class AutoML:
 
     def fit(self, dataset_class: Any, subsample: int = None, trial: optuna.trial.Trial = None) -> "AutoML":
 
+        unsupported = ["swin", "convexnet"]
+        if any(x in self.backbone.lower() for x in unsupported):
+            raise ValueError(f"{self.backbone} is disabled in this configuration.")
 
         mean, std = calculate_mean_std(dataset_class)
-        base_transform = get_transforms(mean, std, phase="train", backbone_name=self.backbone)
-
-        rand_augment = transforms.RandAugment(num_ops=1, magnitude=5)
-        if self.use_augmentation:
-            self._transform = transforms.Compose([rand_augment, base_transform])
-        else:
-            self._transform = base_transform
-
+        
+        # Create base transform WITHOUT augmentation first
+        # Import the new function if available, otherwise fallback to test phase
+        try:
+            from model import get_base_transforms
+            base_transform = get_base_transforms(mean, std, backbone_name=self.backbone)
+        except ImportError:
+            base_transform = get_transforms(mean, std, phase="test", backbone_name=self.backbone)
+        
+        # Create dataset with base transform only for splitting
         dataset = dataset_class(
             root="./data",
             split='train',
             download=True,
-            transform=self._transform
+            transform=base_transform  # No augmentation yet
         )
 
         if subsample is not None:
             indices = np.random.choice(len(dataset), subsample, replace=False)
             dataset = Subset(dataset, indices)
 
+        # Split the dataset first
         train_len = int(0.8 * len(dataset))
         val_len = len(dataset) - train_len
         train_set, val_set = random_split(dataset, [train_len, val_len],
                                           generator=torch.Generator().manual_seed(self.seed))
-        if hasattr(val_set.dataset, 'transform'):
-            mean, std = calculate_mean_std(dataset_class)
-            base_transform = get_transforms(mean, std, phase="train", backbone_name=self.backbone)
-            val_set.dataset.transform = base_transform
-            
+
+        # Now create augmented transform for training set only
+        rand_augment = transforms.RandAugment(num_ops=1, magnitude=5)
+        if self.use_augmentation:
+            train_transform = transforms.Compose([rand_augment, base_transform])
+        else:
+            train_transform = base_transform
+        
+        # Create validation transform (no augmentation)
+        val_transform = get_transforms(mean, std, phase="test", backbone_name=self.backbone)
+        
+        # Apply different transforms to train and validation sets
+        # We need to create new dataset instances with the appropriate transforms
+        train_dataset = dataset_class(
+            root="./data",
+            split='train',
+            download=True,
+            transform=train_transform  # With augmentation
+        )
+        
+        val_dataset = dataset_class(
+            root="./data",
+            split='train',
+            download=True,
+            transform=val_transform  # Without augmentation
+        )
+        
+        if subsample is not None:
+            train_dataset = Subset(train_dataset, indices)
+            val_dataset = Subset(val_dataset, indices)
+        
+        # Apply the same split indices to both datasets
+        train_set = Subset(train_dataset, train_set.indices)
+        val_set = Subset(val_dataset, val_set.indices)
+
         # Build sampler based only on train_set
-        train_targets = [train_set.dataset[i][1] for i in train_set.indices]
+        train_targets = [train_set.dataset.dataset[i][1] if hasattr(train_set.dataset, 'dataset') 
+                        else train_set.dataset[i][1] for i in train_set.indices]
         class_counts = np.bincount(train_targets)
         weights = 1. / class_counts[train_targets]
         sampler = WeightedRandomSampler(weights, len(train_targets))
         print(f"[BALANCE] Applied class balancing with WeightedRandomSampler.")
         print(f"[BALANCE] Sample count per class: {np.bincount(train_targets)}", flush=True)
+        
         self._val_set = val_set
         train_loader = DataLoader(train_set, batch_size=self.batch_size, sampler=sampler)
         val_loader = DataLoader(val_set, batch_size=self.batch_size, shuffle=False)
@@ -119,7 +155,7 @@ class AutoML:
             optimizer = optim.SGD(model.parameters(), lr=self.lr, momentum=0.9)
 
         print(f"[DEBUG] DAC ENABLED for {dataset_class.__name__}")
-        self.dac = DynamicAlgorithmController(optimizer, initial_lr=self.lr)
+        self.dac = DynamicAdjustmentController(optimizer, initial_lr=self.lr)
 
         criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
         self._history = {"loss": [], "acc": [], "val_loss": [], "val_acc": []}

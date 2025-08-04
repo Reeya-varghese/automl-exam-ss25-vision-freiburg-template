@@ -84,7 +84,7 @@ class BaseVisionDataset(VisionDataset):
         data_path.mkdir(exist_ok=True)
 
         if self._base_folder.exists():
-            print(f"{self._dataset_name} dataset already exists. Skipping download.")
+            #print(f"{self._dataset_name} dataset already exists. Skipping download.")
             return
 
         if self._dataset_name == "skin_cancer":
