@@ -123,7 +123,7 @@ celerybeat.pid
 .env
 .venv
 env/
-autogluon_results/
+Plots/
 venv/
 ENV/
 env.bak/

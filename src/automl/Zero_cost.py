@@ -9,7 +9,8 @@ DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 class ZeroCostCandidateGenerator:
     """
-    This class generates and ranks random neural network heads for given backbone models using zero-cost proxies
+    This class generates and ranks random neural network heads for given 
+    backbone models using zero-cost proxies
     Jacobian norm and GradNorm.
 
     Args:

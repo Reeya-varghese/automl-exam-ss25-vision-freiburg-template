@@ -5,13 +5,15 @@ from copy import deepcopy
 import numpy as np
 from torch import nn, optim
 from torch.utils.data import DataLoader, WeightedRandomSampler
+from sklearn.model_selection import StratifiedShuffleSplit
+
 from sklearn.metrics import accuracy_score
 import random
 import optuna
 from model import get_model, get_transforms
 from utils import calculate_mean_std
 from torch.utils.data import Subset, random_split
-from dac import DynamicAdjustmentController
+from dac import DynamicAlgorithmController
 from torchvision import transforms
 
 logger = logging.getLogger(__name__)
@@ -63,9 +65,6 @@ class AutoML:
 
     def fit(self, dataset_class: Any, subsample: int = None, trial: optuna.trial.Trial = None) -> "AutoML":
 
-        unsupported = ["swin", "convexnet"]
-        if any(x in self.backbone.lower() for x in unsupported):
-            raise ValueError(f"{self.backbone} is disabled in this configuration.")
 
         mean, std = calculate_mean_std(dataset_class)
         base_transform = get_transforms(mean, std, phase="train", backbone_name=self.backbone)
@@ -91,7 +90,11 @@ class AutoML:
         val_len = len(dataset) - train_len
         train_set, val_set = random_split(dataset, [train_len, val_len],
                                           generator=torch.Generator().manual_seed(self.seed))
-
+        if hasattr(val_set.dataset, 'transform'):
+            mean, std = calculate_mean_std(dataset_class)
+            base_transform = get_transforms(mean, std, phase="train", backbone_name=self.backbone)
+            val_set.dataset.transform = base_transform
+            
         # Build sampler based only on train_set
         train_targets = [train_set.dataset[i][1] for i in train_set.indices]
         class_counts = np.bincount(train_targets)
@@ -116,7 +119,7 @@ class AutoML:
             optimizer = optim.SGD(model.parameters(), lr=self.lr, momentum=0.9)
 
         print(f"[DEBUG] DAC ENABLED for {dataset_class.__name__}")
-        self.dac = DynamicAdjustmentController(optimizer, initial_lr=self.lr)
+        self.dac = DynamicAlgorithmController(optimizer, initial_lr=self.lr)
 
         criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
         self._history = {"loss": [], "acc": [], "val_loss": [], "val_acc": []}

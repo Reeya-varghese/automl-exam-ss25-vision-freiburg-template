@@ -3,9 +3,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-class DynamicAdjustmentController:
+class DynamicAlgorithmController:
     """
-    This function, DAC (Dynamic Adjustment Controller) module dynamically adjusts the learning rate
+    This function, DAC (Dynamic algorithm Controller) module dynamically adjusts the learning rate
     and switches the optimizer based on training performance.
 
     Args:
