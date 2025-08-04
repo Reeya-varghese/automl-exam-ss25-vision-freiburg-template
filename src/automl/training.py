@@ -16,6 +16,18 @@ from torchvision import transforms
 
 logger = logging.getLogger(__name__)
 
+class TransformedSubset(torch.utils.data.Dataset):
+    def __init__(self, base_dataset, indices, transform):
+        self.base_dataset = base_dataset
+        self.indices = indices
+        self.transform = transform
+
+    def __getitem__(self, idx):
+        x, y = self.base_dataset[self.indices[idx]]
+        return self.transform(x), y
+
+    def __len__(self):
+        return len(self.indices)
 
 class AutoML:
 
@@ -63,80 +75,43 @@ class AutoML:
 
     def fit(self, dataset_class: Any, subsample: int = None, trial: optuna.trial.Trial = None) -> "AutoML":
 
-        unsupported = ["swin", "convexnet"]
-        if any(x in self.backbone.lower() for x in unsupported):
-            raise ValueError(f"{self.backbone} is disabled in this configuration.")
+        # Load dataset ONCE without transform
+        base_dataset = dataset_class(
+            root="./data",
+            split='train',
+            download=True,
+            transform=None  # no transform yet
+        )
 
+        # Optional subsampling
+        if subsample is not None:
+            indices = np.random.choice(len(base_dataset), subsample, replace=False)
+            base_dataset = Subset(base_dataset, indices)
+
+# Split dataset into train and val indices
+        train_len = int(0.8 * len(base_dataset))
+        val_len = len(base_dataset) - train_len
+        train_indices, val_indices = random_split(
+            range(len(base_dataset)), [train_len, val_len],
+            generator=torch.Generator().manual_seed(self.seed)
+        )
+
+# Compute transforms
         mean, std = calculate_mean_std(dataset_class)
-        
-        # Create base transform WITHOUT augmentation first
-        # Import the new function if available, otherwise fallback to test phase
-        try:
-            from model import get_base_transforms
-            base_transform = get_base_transforms(mean, std, backbone_name=self.backbone)
-        except ImportError:
-            base_transform = get_transforms(mean, std, phase="test", backbone_name=self.backbone)
-        
-        # Create dataset with base transform only for splitting
-        dataset = dataset_class(
-            root="./data",
-            split='train',
-            download=True,
-            transform=base_transform  # No augmentation yet
-        )
-
-        if subsample is not None:
-            indices = np.random.choice(len(dataset), subsample, replace=False)
-            dataset = Subset(dataset, indices)
-
-        # Split the dataset first
-        train_len = int(0.8 * len(dataset))
-        val_len = len(dataset) - train_len
-        train_set, val_set = random_split(dataset, [train_len, val_len],
-                                          generator=torch.Generator().manual_seed(self.seed))
-
-        # Now create augmented transform for training set only
         rand_augment = transforms.RandAugment(num_ops=1, magnitude=5)
-        if self.use_augmentation:
-            train_transform = transforms.Compose([rand_augment, base_transform])
-        else:
-            train_transform = base_transform
-        
-        # Create validation transform (no augmentation)
-        val_transform = get_transforms(mean, std, phase="test", backbone_name=self.backbone)
-        
-        # Apply different transforms to train and validation sets
-        # We need to create new dataset instances with the appropriate transforms
-        train_dataset = dataset_class(
-            root="./data",
-            split='train',
-            download=True,
-            transform=train_transform  # With augmentation
-        )
-        
-        val_dataset = dataset_class(
-            root="./data",
-            split='train',
-            download=True,
-            transform=val_transform  # Without augmentation
-        )
-        
-        if subsample is not None:
-            train_dataset = Subset(train_dataset, indices)
-            val_dataset = Subset(val_dataset, indices)
-        try:
-            sample_from_transformed = train_dataset[train_set.indices[0]][0]
-            sample_from_base = dataset[train_set.indices[0]][0]
-            assert sample_from_transformed.shape == sample_from_base.shape, "Shape mismatch in sample tensors"
-            assert sample_from_transformed.equal(sample_from_base), (
-                "Dataset indexing mismatch – possible data leakage or inconsistent dataset order!"
-        )
-        except Exception as e:
-            print("⚠️ WARNING: Potential indexing mismatch between datasets:", e)
-        # Apply the same split indices to both datasets
-        train_set = Subset(train_dataset, train_set.indices)
-        val_set = Subset(val_dataset, val_set.indices)
+        base_transform = get_transforms(mean, std, phase="test", backbone_name=self.backbone)
 
+        train_transform = transforms.Compose([rand_augment, base_transform]) if self.use_augmentation else base_transform
+        val_transform = base_transform  # no augmentation for validation
+
+# Wrap subsets with transforms
+        train_indices = train_indices.indices if isinstance(train_indices, Subset) else train_indices
+        val_indices = val_indices.indices if isinstance(val_indices, Subset) else val_indices
+
+        train_set = TransformedSubset(base_dataset, train_indices, train_transform)
+        val_set = TransformedSubset(base_dataset, val_indices, val_transform)
+
+        
         # Build sampler based only on train_set
         train_targets = [train_set.dataset.dataset[i][1] if hasattr(train_set.dataset, 'dataset') 
                         else train_set.dataset[i][1] for i in train_set.indices]
@@ -268,7 +243,7 @@ class AutoML:
         return preds, labels
 
     def evaluate_on_val(self) -> Tuple[np.ndarray, np.ndarray]:
-        data_loader = DataLoader(self._val_set, batch_size=100, shuffle=False)
+        data_loader = DataLoader(self._val_set, batch_size=self.batch_size, shuffle=False)
         predictions, labels = [], []
         self._model.eval()
         with torch.no_grad():
