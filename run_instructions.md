@@ -84,9 +84,9 @@ final_test_preds.npy
 You can run the pipeline like this to get the final_test_preds.npy :
 
 ```bash
-!python src/automl/run.py --dataset skin_cancer --n-trials 10 --seed 42  --carbon-budget 0.15 --enable-carbon-manager
+!python src/automl/run.py --dataset skin_cancer --n-trials 10 --seed 42  --carbon-budget 0.15 --enable-carbon-manager --enable-progressive
 ```
-## 🔗 Submission checklist:
+## Submission checklist:
 
 - [ ] Poster  
 - [ ] Test predictions  
