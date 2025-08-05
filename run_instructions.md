@@ -86,10 +86,28 @@ You can run the pipeline like this to get the final_test_preds.npy :
 ```bash
 !python src/automl/run.py --dataset skin_cancer --n-trials 10 --seed 42  --carbon-budget 0.15 --enable-carbon-manager
 ```
+### Model Performance Across Seeds (10 Trials Each)
+
+| Dataset     | Metric                      | Seed 6        | Seed 42       | Seed 92       |
+|-------------|-----------------------------|---------------|---------------|---------------|
+| **flowers** | acc                         | 0.94          | 0.93          | 0.97          |
+|             | F1                          | 0.93          | 0.98          | 0.96          |
+| **emotions**| acc                         | 0.6847        | 0.6463        | 0.6779        |
+|             | F1                          | 0.6686        | 0.6364        | 0.6623        |
+| **fashion** | acc                         | 0.9454        | 0.9333        | 0.9378        |
+|             | F1                          | 0.9453        | 0.9331        | 0.9375        |
+| **skincancer** | acc - Val                | 0.78          | 0.84          | 0.73          |
+|             |                             |               |   **0.86**    |               |
+
+### Final Submission Metrics on the predictions.npy of Skin Cancer
+- Accuracy: **0.8626**
+- Precision (Micro): **0.8004**
+- F1 (Micro): **0.7961**
+
 ## Submission checklist:
 
 - [ ] Poster  
-- [ ] Test predictions  
+- [x] Test predictions  
 - [x] Reproducibility instructions  
 - [x] Team info  
 
