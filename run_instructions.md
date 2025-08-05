@@ -96,7 +96,7 @@ You can run the pipeline like this to get the final_test_preds.npy :
 |             | F1                          | 0.66          | 0.63          | 0.66          |
 | **fashion** | accuracy                    | 0.94          | 0.93          | 0.93          |
 |             | F1                          | 0.94          | 0.93          | 0.93          |
-| **skincancer** | accuracy                 | N/A           | **0.86**      | 0.73          |
+| **skincancer** | accuracy                 | N/A           | **0.86**      | N/A           |
 |             |     F1                      |               | **0.79**      |               |
 
 ### Final Metrics on the test dataset 
