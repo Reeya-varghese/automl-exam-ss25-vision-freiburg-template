@@ -1,5 +1,5 @@
 # AutoML Exam - SS25 (Vision Data)
-
+Team Name - GenZs
 This repository contains the codebase for our submission to the AutoML SS25 exam at the University of Freiburg.
 It includes our AutoML system, training code, and prediction generation pipeline.
 
@@ -84,7 +84,7 @@ final_test_preds.npy
 You can run the pipeline like this to get the final_test_preds.npy :
 
 ```bash
-!python src/automl/run.py --dataset skin_cancer --n-trials 10 --seed 42  --carbon-budget 0.15 --enable-carbon-manager --enable-progressive
+!python src/automl/run.py --dataset skin_cancer --n-trials 10 --seed 42  --carbon-budget 0.15 --enable-carbon-manager
 ```
 ## Submission checklist:
 
