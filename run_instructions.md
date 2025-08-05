@@ -31,14 +31,14 @@ Install the repo in editable mode:
 pip install -e .
 ```
 We have used all these modules in our project.
-torchvision
-pandas
-scikit-learn
-numpy<2.0
-IPython
-optuna
-codecarbon
-As you can see we have added codecarbon and optuna to the requirements. You can install it byt the following commands.
+* `torchvision`
+* `pandas`
+* `scikit-learn`
+* `numpy<2.0`
+* `IPython`
+* `optuna`
+* `codecarbon`
+As you can see we have added codecarbon and optuna to the requirements. You can install it by the following commands.
 
 ```bash
 pip install codecarbon
@@ -74,10 +74,9 @@ src/
 * `training.py`, `model.py`, `utils.py` — Core modules implementing the AutoML logic.
 * `dac.py`, `Zero_cost.py` — Additional search space and zero-cost proxy components.
 
-We used both **Kaggle (P100 GPU)** and **Google Colab (T4 GPU)** for training and evaluation.
-
-It approximately took us around 3 hours to get the prediction on skin cancer dataset. The file is saved as
+We used both **Kaggle (P100 GPU)** and **Google Colab (T4 GPU)** for training and evaluation. It approximately took us around 3 hours to get the prediction on skin cancer dataset. The file is saved as
 final_test_preds.npy
+
 ---
 
 ## Running Training & Predictions
