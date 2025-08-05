@@ -1,4 +1,4 @@
-# AutoML Exam - SS25 (Vision Data) Team Name - GenZs
+# AutoML Exam - SS25 (Vision Data) Team Name - Genzs
 
 This repository contains the codebase for our submission to the AutoML SS25 exam at the University of Freiburg.
 It includes our AutoML system, training code, and prediction generation pipeline.
@@ -38,7 +38,7 @@ We have used all these modules in our project.
 * `IPython`
 * `optuna`
 * `codecarbon`
-As you can see we have added codecarbon and optuna to the requirements. You can install it by the following commands.
+As you can see we have added codecarbon and optuna to the requirements. If the install command does not work, You can install it manually by the following commands.
 
 ```bash
 pip install codecarbon
@@ -62,7 +62,6 @@ src/
 └── automl/
     ├── dac.py
     ├── model.py
-    ├── Plots.py
     ├── run.py
     ├── training.py
     ├── utils.py
@@ -86,6 +85,7 @@ You can run the pipeline like this to get the final_test_preds.npy :
 ```bash
 !python src/automl/run.py --dataset skin_cancer --n-trials 10 --seed 42  --carbon-budget 0.15 --enable-carbon-manager
 ```
+Note: The carbon budget is customizable.
 ### Model Performance Across Seeds (10 Trials Each)
 
 | Dataset     | Metric                      | Seed 6        | Seed 42       | Seed 92       |
@@ -97,17 +97,17 @@ You can run the pipeline like this to get the final_test_preds.npy :
 | **fashion** | accuracy                    | 0.94          | 0.93          | 0.93          |
 |             | F1                          | 0.94          | 0.93          | 0.93          |
 | **skincancer** | accuracy                 | N/A           | **0.86**      | N/A           |
-|             |     F1                      |               | **0.79**      |               |
+|             |     F1                      | N/A           | **0.79**      | N/A           |
 
 ### Final Metrics on the test dataset 
-`Final_test_preds.npy` results on Skin Cancer
+`final_test_preds.npy` results on Skin Cancer
 - Accuracy: **0.8626**
 - Precision - Micro: **0.8004**
 - F1 - Micro: **0.7961**
 
 ## Submission checklist:
 
-- [ ] Poster  
+- [x] Poster  
 - [x] Test predictions  
 - [x] Reproducibility instructions  
 - [x] Team info  
