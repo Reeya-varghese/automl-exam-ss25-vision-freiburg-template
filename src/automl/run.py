@@ -17,10 +17,7 @@ from training import AutoML
 import optuna
 from optuna.samplers import NSGAIIISampler
 import traceback
-from Plots import (
-    save_accuracy_histogram,
-    save_metric_curves
-)
+
 from model import get_transforms
 from utils import calculate_mean_std
 from vision_datasets import FashionDataset, FlowersDataset, EmotionsDataset, SkinCancerDataset
@@ -788,6 +785,4 @@ if __name__ == "__main__":
 
     print("Enhanced AutoML with Combined Carbon Strategies completed successfully!")
 
-    save_accuracy_histogram(study)
-    save_metric_curves(study)
-    print("Optuna visualizations saved successfully!")
+    
