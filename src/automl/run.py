@@ -778,11 +778,7 @@ if __name__ == "__main__":
     print(f"   Total Carbon Footprint: {total_emissions:.4f} kg CO2eq")
     print(f"   HPO Phase: {global_metrics['emissions_kg']:.4f} kg")
     print(f"   Final Training: {final_metrics['emissions_kg']:.4f} kg")
-    
-    if carbon_saved_estimate > 0:
-        print(f"   Estimated Carbon Saved: {carbon_saved_estimate:.4f} kg CO2eq")
     print(f"Peak GPU Memory: {max(global_metrics['peak_gpu_memory_gb'], final_metrics['peak_gpu_memory_gb']):.2f} GB")
-
     print("Enhanced AutoML with Combined Carbon Strategies completed successfully!")
 
     
