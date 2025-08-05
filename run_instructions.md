@@ -1,5 +1,5 @@
-# AutoML Exam - SS25 (Vision Data)
-Team Name - GenZs
+# AutoML Exam - SS25 (Vision Data) Team Name - GenZs
+
 This repository contains the codebase for our submission to the AutoML SS25 exam at the University of Freiburg.
 It includes our AutoML system, training code, and prediction generation pipeline.
 
