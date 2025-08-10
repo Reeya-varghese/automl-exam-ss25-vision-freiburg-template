@@ -414,7 +414,7 @@ def optuna_objective(
         seed: int = 42,
         top_k_candidates: list[dict[str, Any]] = None,
         carbon_budget_kg: float = 0.1,
-        enable_progressive: bool = True,
+        enable_progressive: bool = True, 
         carbon_budget_manager: CarbonBudgetManager = None,
         total_trials: int = 10
 ) -> Tuple[float, float, float, float, float]:
@@ -531,7 +531,7 @@ def optuna_objective(
         tracker.stop_tracking()
         return 0.0, 0.0, 999.0, 999.0, 999.0
 
-    # Get sustainability metrics
+    # Get sustainability metrics 
     sustainability_metrics = tracker.stop_tracking()
 
     # Apply architecture efficiency weighting to carbon cost
