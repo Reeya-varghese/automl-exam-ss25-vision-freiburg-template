@@ -11,7 +11,7 @@ import optuna.visualization
 
 from optuna.samplers import TPESampler
 from optuna.pruners import SuccessiveHalvingPruner
-
+import pandas
 import logging
 from automl.vision_datasets import FashionDataset, FlowersDataset, EmotionsDataset
 
